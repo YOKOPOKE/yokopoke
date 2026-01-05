@@ -477,24 +477,18 @@ window.toggleExtra = function (name, price, category) {
     if (index > -1) {
         // Remove
         currentOrder.extras.splice(index, 1);
-        if (btn) {
-            btn.innerText = 'Agregar';
-            btn.className = 'w-full py-1.5 rounded-lg text-xs font-bold transition-colors bg-gray-100 text-gray-600 group-hover:bg-yoko-light';
-        }
         showToast('Eliminado', '🗑️');
     } else {
         // Add
         currentOrder.extras.push({ name, price, category });
-        if (btn) {
-            btn.innerText = 'Quitar';
-            btn.className = 'w-full py-1.5 rounded-lg text-xs font-bold transition-colors bg-red-500 text-white';
-        }
         showToast(`Agregado: ${name}`, '✨');
         playSound('pop');
     }
 
     saveOrderToStorage();
+    renderExtrasStep(); // Refresh UI to show checks/borders
     renderSummary();
+
 
     // Refresh Checkout if open
     const checkoutView = document.getElementById('checkout-view');
@@ -737,31 +731,35 @@ function renderExtrasStep() {
                 
                 <div class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     ${sec.items.map(item => `
-                        <div class="group bg-white p-4 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden cursor-pointer h-full flex flex-col justify-between
-                                    ${isExtraSelected(item.name) ? 'ring-2 ring-yoko-accent bg-green-50/50' : 'hover:border-yoko-primary/30'}"
+                        <div class="group relative overflow-hidden rounded-2xl transition-all duration-300 cursor-pointer h-full
+                                    ${isExtraSelected(item.name)
+                    ? 'bg-white shadow-lg ring-2 ring-yoko-accent transform scale-105'
+                    : 'bg-white/60 backdrop-blur-md border border-white/50 hover:bg-white hover:shadow-xl hover:scale-105'}"
                              onclick="toggleExtra('${item.name}', ${item.price}, '${item.category}')">
                             
-                            <!-- Selection Checkmark (Absolute Top Right) -->
-                            <div class="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white transition-all duration-300 z-20
-                                      ${isExtraSelected(item.name) ? 'bg-yoko-accent scale-100 shadow-md' : 'bg-gray-200 scale-0 opacity-0'}">
-                                <i class="fa-solid fa-check"></i>
-                            </div>
-
-                            <div class="relative z-10">
-                                <div class="flex justify-between items-start mb-2 pr-6">
-                                    <h4 class="font-bold text-sm lg:text-base text-yoko-dark leading-tight group-hover:text-yoko-primary transition-colors">${item.name}</h4>
+                            <!-- Status Indicator -->
+                            <div class="absolute top-3 right-3 z-20 transition-all duration-300 ${isExtraSelected(item.name) ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}">
+                                <div class="w-6 h-6 rounded-full bg-yoko-accent text-white flex items-center justify-center text-xs shadow-md">
+                                    <i class="fa-solid fa-check"></i>
                                 </div>
-                                <p class="text-xs text-gray-400 line-clamp-2 mb-3 leading-relaxed font-medium">${item.description || 'Delicioso complemento para tu bowl.'}</p>
                             </div>
 
-                            <div class="mt-auto flex items-center justify-between border-t border-gray-100 pt-3 group-hover:border-dashed transition-colors">
-                                <span class="text-sm font-bold text-yoko-dark group-hover:text-yoko-accent transition-colors">$${item.price}</span>
+                            <div class="p-4 flex flex-col h-full relative z-10">
+                                <!-- Icon & Name -->
+                                <div class="flex items-start gap-3 mb-2">
+                                    <span class="text-2xl opacity-80 grayscale group-hover:grayscale-0 transition-all duration-300 scale-90 group-hover:scale-110">${item.icon || sec.icon}</span>
+                                    <div>
+                                        <h4 class="font-bold text-sm text-yoko-dark leading-tight group-hover:text-yoko-primary transition-colors">${item.name}</h4>
+                                        <span class="text-xs font-bold text-yoko-accent block mt-0.5">$${item.price}</span>
+                                    </div>
+                                </div>
                                 
-                                <button class="px-3 py-1.5 rounded-full text-[10px] font-bold transition-all shadow-sm flex items-center gap-1.5
-                                            ${isExtraSelected(item.name) ? 'bg-red-100 text-red-500 hover:bg-red-200' : 'bg-gray-100 text-gray-600 group-hover:bg-yoko-primary group-hover:text-white'}">
-                                    ${isExtraSelected(item.name) ? '<i class="fa-solid fa-trash"></i>' : '<i class="fa-solid fa-plus"></i> Agregar'}
-                                </button>
+                                <!-- Description (Smaller) -->
+                                <p class="text-[10px] text-gray-400 line-clamp-2 leading-relaxed mt-1">${item.description || ''}</p>
                             </div>
+                            
+                            <!-- Subtle Background Flash -->
+                            <div class="absolute inset-0 bg-gradient-to-br from-green-50/0 to-green-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
                         </div>
                     `).join('')}
                 </div>
@@ -1851,26 +1849,21 @@ function showToast(message, icon = '✅') {
         <div class="w-1 h-8 rounded-full ${statusColor} ml-2"></div>
     `;
 
-    // 3. Mount & Animate
-    // Insert at top on mobile (stack down), Insert at bottom on desktop (stack up)
-    // Actually flex-col usually stacks down.
-    // For Desktop bottom-right, we want newest at bottom. flex-col puts newest at bottom if appended. GOOD.
-    // For Mobile top-center, we want newest at top? flex-col puts newest at bottom.
-    // Let's use appendChild (Newest at bottom).
-    // On mobile, if top-aligned, newest appearing below is fine.
+    // 4. Auto Dimsiss and Stack Management
+    // Remove older toasts to prevent stacking overlap annoyance
+    while (container.children.length > 0) {
+        container.removeChild(container.firstChild);
+    }
 
     container.appendChild(toast);
 
     // Trigger Animation (Next Frame)
+    // Force reflow
+    void toast.offsetWidth;
+
     requestAnimationFrame(() => {
         toast.classList.remove('translate-y-[-20px]', 'opacity-0', 'scale-95');
-        // Mobile: Slide down. Desktop: Slide up/left? 
-        // We used translate-y-[-20px] (Up) as start. So removing it drops it down. Good for Top Mobile.
-        // For Desktop bottom, removing translate up means it drops down? No.
-        // Let's keep distinct start states via media query if needed, but 'translate-y-0' is final.
-        // The default start was -20px. So it slides DOWN into place. Nice for mobile.
-        // For desktop bottom, sliding UP is better.
-        // Let's just adjust classes or keep simple slide down. Slide down looks good for "Notification" vibe.
+        toast.classList.add('translate-y-0', 'opacity-100', 'scale-100');
     });
 
     // Interactions
