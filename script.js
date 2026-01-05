@@ -9,10 +9,33 @@ AOS.init({
 });
 
 // --- UPS/EXTRAS DATA ---
+// --- UPS/EXTRAS DATA (Fallback/Default) ---
 let extrasMenu = {
-    sides: [],
-    drinks: [],
-    desserts: []
+    sides: [
+        { name: 'Kushiague de Plátano con Queso', category: 'side', price: 65, description: 'Brocheta empanizada de plátano macho y queso.' },
+        { name: 'Kushiague de Queso Manchego', category: 'side', price: 60, description: 'Brocheta empanizada de queso manchego.' },
+        { name: 'Edamames Asados', category: 'side', price: 75, description: 'Vainas de soya asadas con sal de grano y limón.' },
+        { name: 'Papas Gajo', category: 'side', price: 55, description: 'Papas sazonadas y fritas.' }
+    ],
+    drinks: [
+        { name: 'Water People', category: 'drink', price: 35 },
+        { name: 'Refresher del día', category: 'drink', price: 50 },
+        { name: 'Café', category: 'drink', price: 35 },
+        { name: 'Agua Embotellada', category: 'drink', price: 25 },
+        { name: 'Coca Cola', category: 'drink', price: 35 },
+        { name: 'Coca Cola Light', category: 'drink', price: 35 },
+        { name: 'Soda Japonesa', category: 'drink', price: 35 },
+        { name: 'Monster Zero', category: 'drink', price: 48 },
+        { name: 'Modelo Especial', category: 'drink', price: 45 },
+        { name: 'Modelo Negra', category: 'drink', price: 45 },
+        { name: 'Modelo Negra 0%', category: 'drink', price: 45 },
+        { name: 'Lucky Buddha Beer', category: 'drink', price: 85 }
+    ],
+    desserts: [
+        { name: 'By GERANIO', category: 'dessert', price: 110, description: 'Postres contemporáneos basados en la temporalidad e innovación.' },
+        { name: 'Helado Artesanal', category: 'dessert', price: 95, description: 'Sabores de temporada.' },
+        { name: 'Mochis', category: 'dessert', price: 100, description: 'Bocaditos dulces de arroz con textura elástica.' }
+    ]
 };
 
 let currentOrder = {
@@ -758,38 +781,35 @@ function renderExtrasStep() {
                 ${sections.find(s => s.id === activeExtraCategory).title}
             </h3>
             
-            <div class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 ${currentItems.length ? currentItems.map((item, index) => `
-                    <div class="group relative overflow-hidden rounded-2xl transition-all duration-300 cursor-pointer h-full min-h-[140px] animate-fade-in-up
+                    <div class="group relative overflow-hidden rounded-xl transition-all duration-300 cursor-pointer animate-fade-in-up flex items-center p-3 gap-3
                                 ${isExtraSelected(item.name)
-                    ? 'bg-white shadow-lg ring-2 ring-yoko-accent transform scale-[1.02]'
-                    : 'bg-white/60 backdrop-blur-md border border-white/50 hover:bg-white hover:shadow-xl hover:scale-[1.02]'}"
-                            style="animation-delay: ${index * 0.05}s; animation-fill-mode: both;"
+                    ? 'bg-white shadow-md ring-2 ring-yoko-accent transform scale-[1.01]'
+                    : 'bg-white/70 backdrop-blur-md border border-white/60 hover:bg-white hover:shadow-lg hover:scale-[1.02]'}"
+                            style="animation-delay: ${index * 0.03}s; animation-fill-mode: both;"
                             onclick="toggleExtra('${item.name}', ${item.price}, '${item.category}')">
                         
-                        <!-- Status Indicator -->
-                        <div class="absolute top-3 right-3 z-20 transition-all duration-300 ${isExtraSelected(item.name) ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}">
-                            <div class="w-6 h-6 rounded-full bg-yoko-accent text-white flex items-center justify-center text-xs shadow-md">
-                                <i class="fa-solid fa-check"></i>
+                        <!-- Icon (Left) -->
+                        <div class="shrink-0 w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform duration-300">
+                           ${item.icon || sections.find(s => s.id === activeExtraCategory).icon}
+                        </div>
+
+                        <!-- Content (Middle) -->
+                        <div class="flex-grow min-w-0">
+                            <div class="flex justify-between items-center mb-0.5">
+                                <h4 class="font-bold text-sm text-yoko-dark leading-tight line-clamp-1 group-hover:text-yoko-primary transition-colors">${item.name}</h4>
+                                <!-- Checkmark (Visible when selected) -->
+                                <i class="fa-solid fa-check-circle text-yoko-accent text-lg transition-all duration-300 ${isExtraSelected(item.name) ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}"></i>
+                            </div>
+                            <div class="flex justify-between items-baseline">
+                                <p class="text-[10px] text-gray-400 line-clamp-1 truncate pr-2">${item.description || 'Complemento'}</p>
+                                <span class="text-xs font-bold text-yoko-accent shrink-0 bg-yoko-accent/5 px-2 py-0.5 rounded-md">$${item.price}</span>
                             </div>
                         </div>
 
-                        <div class="p-4 flex flex-col h-full relative z-10">
-                            <!-- Icon & Name -->
-                            <div class="flex items-start gap-3 mb-2">
-                                <span class="text-3xl opacity-90 drop-shadow-sm filter group-hover:brightness-110 transition-all duration-300">${item.icon || sections.find(s => s.id === activeExtraCategory).icon}</span>
-                                <div>
-                                    <h4 class="font-bold text-sm lg:text-base text-yoko-dark leading-tight group-hover:text-yoko-primary transition-colors line-clamp-2">${item.name}</h4>
-                                    <span class="text-xs font-bold text-yoko-accent block mt-1 bg-yoko-accent/5 px-2 py-0.5 rounded-md inline-block">$${item.price}</span>
-                                </div>
-                            </div>
-                            
-                            <!-- Description -->
-                            <p class="text-[11px] text-gray-400 line-clamp-2 leading-relaxed mt-auto">${item.description || ''}</p>
-                        </div>
-                        
                         <!-- Subtle Background Flash -->
-                        <div class="absolute inset-0 bg-gradient-to-br from-indigo-50/0 to-indigo-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+                        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 pointer-events-none"></div>
                     </div>
                 `).join('') : `
                     <div class="col-span-full py-8 text-center text-gray-400 italic">
