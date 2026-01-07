@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | Yoko Poke</title>
+    <!-- Same Styles as Main Site -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../styles.css"> <!-- Shared CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'yoko-primary': '#2F5233',
+                        'yoko-secondary': '#1a2e1d',
+                        'yoko-accent': '#FF6B6B',
+                        'yoko-light': '#F7F9F5',
+                        'yoko-dark': '#1A1A1A'
+                    },
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-50 text-yoko-dark antialiased">
+
+    <!-- Auth Overlay (Simple PIN) -->
+    <div id="auth-overlay" class="fixed inset-0 bg-yoko-primary z-50 flex flex-col items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center">
+            <h2 class="text-2xl font-serif font-bold text-yoko-primary mb-2">Yoko Admin</h2>
+            <p class="text-gray-500 mb-6 text-sm">Ingresa el PIN de seguridad</p>
+            <input type="password" id="admin-pin"
+                class="w-full text-center text-2xl tracking-[0.5em] font-bold border-b-2 border-gray-200 focus:border-yoko-accent outline-none py-2 mb-6 transition-colors"
+                placeholder="••••" maxlength="4">
+            <button id="login-btn"
+                class="w-full bg-yoko-primary text-white py-3 rounded-xl font-bold hover:bg-yoko-dark transition-colors shadow-lg">Entrar</button>
+            <p id="login-msg" class="text-red-500 text-xs mt-3 hidden">PIN Incorrecto</p>
+        </div>
+    </div>
+
+    <!-- Main App (Hidden by default) -->
+    <div id="admin-app" class="hidden min-h-screen flex flex-col md:flex-row">
+
+        <!-- Sidebar (Desktop/Tablet) -->
+        <aside
+            class="bg-white border-r border-gray-200 w-64 flex-shrink-0 z-20 hidden md:flex flex-col h-screen sticky top-0">
+            <div class="h-16 flex items-center justify-center border-b border-gray-100 shrink-0">
+                <h1 class="font-serif font-bold text-xl text-yoko-primary flex items-center gap-2">
+                    <i class="fa-solid fa-leaf text-yoko-accent"></i> YOKO <span
+                        class="text-gray-400 text-xs uppercase tracking-widest mt-1">Admin</span>
+                </h1>
+            </div>
+            <nav class="p-4 space-y-2 flex-grow">
+                <button onclick="switchTab('orders')" id="tab-orders-desktop"
+                    class="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 bg-yoko-primary text-white shadow-md transition-all">
+                    <i class="fa-solid fa-list-check w-6"></i> Pedidos
+                </button>
+                <button onclick="switchTab('menu')" id="tab-menu-desktop"
+                    class="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-gray-500 hover:bg-gray-50 hover:text-yoko-primary transition-all">
+                    <i class="fa-solid fa-utensils w-6"></i> Menú
+                </button>
+                <button onclick="switchTab('config')" id="tab-config-desktop"
+                    class="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-gray-500 hover:bg-gray-50 hover:text-yoko-primary transition-all">
+                    <i class="fa-solid fa-sliders w-6"></i> Reglas
+                </button>
+            </nav>
+            <div class="p-4 border-t border-gray-100">
+                <button onclick="logout()"
+                    class="w-full text-left px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-3 text-red-400 hover:bg-red-50 transition-all">
+                    <i class="fa-solid fa-right-from-bracket w-6"></i> Salir
+                </button>
+            </div>
+        </aside>
+
+        <!-- Bottom Navigation (Mobile Only) -->
+        <nav
+            class="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 z-40 flex justify-around items-center pb-safe pt-2 px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+            <button onclick="switchTab('orders')" id="tab-orders-mobile"
+                class="flex flex-col items-center p-2 text-yoko-primary transition-colors flex-1">
+                <i class="fa-solid fa-list-check text-xl mb-1"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wide">Pedidos</span>
+            </button>
+            <div class="w-px h-8 bg-gray-100"></div>
+            <button onclick="switchTab('menu')" id="tab-menu-mobile"
+                class="flex flex-col items-center p-2 text-gray-400 hover:text-yoko-primary transition-colors flex-1">
+                <i class="fa-solid fa-utensils text-xl mb-1"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wide">Menú</span>
+            </button>
+            <div class="w-px h-8 bg-gray-100"></div>
+            <button onclick="switchTab('config')" id="tab-config-mobile"
+                class="flex flex-col items-center p-2 text-gray-400 hover:text-yoko-primary transition-colors flex-1">
+                <i class="fa-solid fa-sliders text-xl mb-1"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wide">Reglas</span>
+            </button>
+            <div class="w-px h-8 bg-gray-100"></div>
+            <button onclick="logout()"
+                class="flex flex-col items-center p-2 text-gray-300 hover:text-red-400 transition-colors flex-1">
+                <i class="fa-solid fa-right-from-bracket text-xl mb-1"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wide">Salir</span>
+            </button>
+        </nav>
+
+        <!-- Content Area -->
+        <main class="flex-1 overflow-y-auto h-screen bg-gray-50 relative pb-24 md:pb-0">
+
+            <!-- ORDERS VIEW -->
+            <div id="view-orders" class="p-6 md:p-10 max-w-6xl mx-auto animate-fade-in">
+                <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                    <div>
+                        <h2 class="text-3xl font-bold text-yoko-dark font-serif">Pedidos Entrantes</h2>
+                        <p class="text-gray-400 text-sm flex items-center gap-2 mt-1">
+                            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Sistema en línea
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-3 w-full md:w-auto">
+                        <div
+                            class="bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3 flex-1 md:flex-none">
+                            <div
+                                class="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600">
+                                <i class="fa-solid fa-dollar-sign"></i>
+                            </div>
+                            <div>
+                                <p class="text-[10px] text-gray-400 font-bold uppercase">Ventas Hoy</p>
+                                <p class="font-bold text-yoko-dark" id="stats-revenue">$0</p>
+                            </div>
+                        </div>
+                        <div
+                            class="bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3 flex-1 md:flex-none">
+                            <div class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                                <i class="fa-solid fa-receipt"></i>
+                            </div>
+                            <div>
+                                <p class="text-[10px] text-gray-400 font-bold uppercase">Pedidos</p>
+                                <p class="font-bold text-yoko-dark" id="stats-count">0</p>
+                            </div>
+                        </div>
+                        <button
+                            class="bg-yoko-primary text-white p-3 rounded-xl shadow-lg shadow-green-900/10 hover:bg-yoko-secondary transition-all"
+                            onclick="fetchOrders()">
+                            <i class="fa-solid fa-rotate"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Order List -->
+                <!-- Kanban Board -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full overflow-hidden">
+
+                    <!-- COL 1: PENDING -->
+                    <div class="flex flex-col h-full bg-yellow-50/50 rounded-2xl border border-yellow-100 p-4">
+                        <header class="flex justify-between items-center mb-4">
+                            <h3 class="font-bold text-yoko-dark flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span> Pendientes
+                            </h3>
+                            <span class="bg-white px-2 py-0.5 rounded-md text-xs font-bold text-gray-400 shadow-sm"
+                                id="count-pending">0</span>
+                        </header>
+                        <div id="col-pending"
+                            class="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar min-h-[200px]"
+                            ondragover="allowDrop(event)" ondrop="drop(event, 'pending')">
+                            <!-- Cards Injected Here -->
+                        </div>
+                    </div>
+
+                    <!-- COL 2: PREPARING -->
+                    <div class="flex flex-col h-full bg-blue-50/50 rounded-2xl border border-blue-100 p-4">
+                        <header class="flex justify-between items-center mb-4">
+                            <h3 class="font-bold text-yoko-dark flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse"></span> Preparando
+                            </h3>
+                            <span class="bg-white px-2 py-0.5 rounded-md text-xs font-bold text-gray-400 shadow-sm"
+                                id="count-preparing">0</span>
+                        </header>
+                        <div id="col-preparing"
+                            class="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar min-h-[200px]"
+                            ondragover="allowDrop(event)" ondrop="drop(event, 'preparing')">
+                            <!-- Cards Injected Here -->
+                        </div>
+                    </div>
+
+                    <!-- COL 3: COMPLETED -->
+                    <div class="flex flex-col h-full bg-green-50/50 rounded-2xl border border-green-100 p-4">
+                        <header class="flex justify-between items-center mb-4">
+                            <h3 class="font-bold text-yoko-dark flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span> Listos
+                            </h3>
+                            <span class="bg-white px-2 py-0.5 rounded-md text-xs font-bold text-gray-400 shadow-sm"
+                                id="count-completed">0</span>
+                        </header>
+                        <div id="col-completed"
+                            class="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar min-h-[200px]"
+                            ondragover="allowDrop(event)" ondrop="drop(event, 'completed')">
+                            <!-- Cards Injected Here -->
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- MENU VIEW -->
+            <div id="view-menu" class="p-6 md:p-10 max-w-6xl mx-auto hidden animate-fade-in">
+                <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-yoko-dark">Gestión de Menú</h2>
+                        <p class="text-gray-400 text-sm">Activa o desactiva platillos en tiempo real.</p>
+                    </div>
+                    <button onclick="openProductModal()"
+                        class="bg-yoko-primary text-white px-4 py-2 rounded-xl shadow-lg shadow-green-900/10 hover:bg-yoko-secondary transition-all font-bold text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Nuevo Producto
+                    </button>
+                </header>
+
+                <!-- Quick Filters -->
+                <div class="flex gap-2 overflow-x-auto pb-4 mb-4">
+                    <button
+                        class="px-4 py-1.5 rounded-full bg-yoko-primary text-white text-xs font-bold shadow-sm">Todos</button>
+                    <!-- More filters later -->
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead
+                                class="bg-gray-50/50 text-gray-400 font-medium uppercase text-xs hidden md:table-header-group">
+                                <tr>
+                                    <th class="px-6 py-4">Producto</th>
+                                    <th class="px-6 py-4">Categoría</th>
+                                    <th class="px-6 py-4">Precio</th>
+                                    <th class="px-6 py-4 text-center">Stock</th>
+                                    <th class="px-6 py-4 text-center">Disponible</th>
+                                    <th class="px-6 py-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="menu-table-body"
+                                class="divide-y divide-gray-100 grid md:table-row-group grid-cols-1 sm:grid-cols-2 gap-4 p-4 md:p-0">
+                                <!-- Menu Items Injected Here as Cards on Mobile, Rows on Desktop -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- CONFIG/RULES VIEW -->
+            <div id="view-config" class="p-6 md:p-10 max-w-6xl mx-auto hidden animate-fade-in">
+                <header class="mb-8">
+                    <h2 class="text-3xl font-bold text-yoko-dark font-serif">Reglas del Bowl</h2>
+                    <p class="text-gray-400 text-sm">Define cuántos ingredientes incluye cada tamaño y sus precios
+                        extra.</p>
+                </header>
+
+                <div id="sizes-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Sizes Cards Injected Here -->
+                    <div class="text-center py-10 col-span-full text-gray-400"><i
+                            class="fa-solid fa-spinner fa-spin"></i>
+                        Cargando reglas...</div>
+                </div>
+
+                <!-- ADVANCED RULES SECTION -->
+                <header class="mb-6 mt-12 flex justify-between items-center border-t border-gray-200 pt-10">
+                    <div>
+                        <h2 class="text-2xl font-bold text-yoko-dark font-serif">Reglas de Insumos</h2>
+                        <p class="text-gray-400 text-sm">Configura restricciones y dependencias (Ej. "Si elige Base X,
+                            bloquear Salsa Y").</p>
+                    </div>
+                    <button onclick="openRuleModal()"
+                        class="bg-yoko-dark text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-gray-800 transition-colors shadow-lg">
+                        <i class="fa-solid fa-plus"></i> Nueva Regla
+                    </button>
+                </header>
+
+                <div id="rules-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-10">
+                    <div class="text-center py-10 col-span-full text-gray-400">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Cargando reglas...
+                    </div>
+                    <!-- Rules injected here -->
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Size Rules Edit Modal -->
+    <div id="size-modal"
+        class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+        <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 md:p-8 transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto"
+            id="size-modal-content">
+            <h3 class="font-bold text-2xl text-yoko-dark mb-1 font-serif">Editar Reglas</h3>
+            <p class="text-sm text-gray-400 mb-6" id="size-modal-name">Mediano</p>
+
+            <form id="size-form" class="space-y-6">
+                <!-- Base Price -->
+                <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Precio Base ($)</label>
+                    <input type="number" name="base_price"
+                        class="w-full text-3xl font-bold text-yoko-primary bg-transparent outline-none placeholder-gray-300"
+                        placeholder="0.00" step="1">
+                </div>
+
+                <!-- Limits Grid -->
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Proteins -->
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase text-yoko-dark flex items-center gap-2"><i
+                                class="fa-solid fa-fish text-yoko-accent"></i> Proteínas</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" name="included_proteins"
+                                class="w-16 p-2 rounded-lg border border-gray-200 font-bold text-center text-sm"
+                                placeholder="Inc">
+                            <span class="text-xs text-gray-400">Incluidas</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-gray-400">Extra: +$</span>
+                            <input type="number" name="price_extra_protein"
+                                class="w-16 p-2 rounded-lg border border-gray-200 font-bold text-center text-sm"
+                                placeholder="$$">
+                        </div>
+                    </div>
+
+                    <!-- Toppings -->
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase text-yoko-dark flex items-center gap-2"><i
+                                class="fa-solid fa-carrot text-orange-400"></i> Toppings</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" name="included_toppings"
+                                class="w-16 p-2 rounded-lg border border-gray-200 font-bold text-center text-sm"
+                                placeholder="Inc">
+                            <span class="text-xs text-gray-400">Incluidos</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-gray-400">Extra: +$</span>
+                            <input type="number" name="price_extra_topping"
+                                class="w-16 p-2 rounded-lg border border-gray-200 font-bold text-center text-sm"
+                                placeholder="$$">
+                        </div>
+                    </div>
+
+                    <!-- Crunch -->
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase text-yoko-dark flex items-center gap-2"><i
+                                class="fa-solid fa-cookie text-yellow-600"></i> Crunch</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" name="included_crunches"
+                                class="w-16 p-2 rounded-lg border border-gray-200 font-bold text-center text-sm"
+                                placeholder="Inc">
+                            <span class="text-xs text-gray-400">Incluidos</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-gray-400">Extra: +$</span>
+                            <input type="number" name="price_extra_crunch"
+                                class="w-16 p-2 rounded-lg border border-gray-200 font-bold text-center text-sm"
+                                placeholder="$$">
+                        </div>
+                    </div>
+
+                    <!-- Sauces -->
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase text-yoko-dark flex items-center gap-2"><i
+                                class="fa-solid fa-bottle-droplet text-red-400"></i> Salsas</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" name="included_sauces"
+                                class="w-16 p-2 rounded-lg border border-gray-200 font-bold text-center text-sm"
+                                placeholder="Inc">
+                            <span class="text-xs text-gray-400">Incluidas</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-gray-400">Extra: +$</span>
+                            <input type="number" name="price_extra_sauce"
+                                class="w-16 p-2 rounded-lg border border-gray-200 font-bold text-center text-sm"
+                                placeholder="$$">
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+            <div class="flex gap-3 mt-8">
+                <button onclick="closeSizeModal()"
+                    class="flex-1 py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-50 transition-colors">Cancelar</button>
+                <button onclick="saveSizeRules()" id="size-btn-save"
+                    class="flex-1 py-3 rounded-xl bg-yoko-primary text-white font-bold shadow-lg shadow-green-900/10 hover:bg-yoko-secondary transition-colors">Guardar
+                    Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Price Edit Modal -->
+    <!-- Product Create/Edit Modal (PRO WIZARD 3.1) -->
+    <div id="product-modal"
+        class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[90vh]"
+            id="product-modal-content">
+
+            <!-- Header -->
+            <div class="bg-yoko-light p-6 border-b border-gray-100 flex justify-between items-center shrink-0">
+                <div>
+                    <h3 class="font-bold text-2xl text-yoko-dark font-serif">Nuevo Producto</h3>
+                    <p class="text-sm text-gray-400">Configura clasificación y condiciones.</p>
+                </div>
+                <button onclick="closeProductModal()"
+                    class="w-8 h-8 rounded-full bg-white text-gray-400 hover:text-red-500 flex items-center justify-center shadow-sm transition-colors">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Content -->
+            <div class="p-6 md:p-8 overflow-y-auto flex-1 custom-scrollbar">
+                <form id="product-form" class="space-y-8">
+
+                    <!-- STEP 1: CLASSIFICATION -->
+                    <section class="space-y-4">
+                        <label class="block text-xs font-bold uppercase text-gray-400 tracking-wider">1. ¿Qué tipo de
+                            item es?</label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <label class="cursor-pointer group">
+                                <input type="radio" name="table_type" value="ingredients" class="peer sr-only" checked
+                                    onchange="toggleProductFields()">
+                                <div
+                                    class="p-6 rounded-2xl border-2 border-gray-100 peer-checked:border-yoko-primary peer-checked:bg-green-50/50 transition-all flex flex-col items-center gap-3 group-hover:border-gray-300">
+                                    <div
+                                        class="w-12 h-12 rounded-full bg-white border border-gray-200 flex items-center justify-center text-2xl shadow-sm peer-checked:scale-110 transition-transform">
+                                        🥗
+                                    </div>
+                                    <div class="text-center">
+                                        <p
+                                            class="font-bold text-yoko-dark group-hover:text-yoko-primary transition-colors">
+                                            Insumo de Bowl</p>
+                                        <p class="text-xs text-gray-400 mt-1">Base, Proteína, Topping...</p>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <label class="cursor-pointer group">
+                                <input type="radio" name="table_type" value="menu_items" class="peer sr-only"
+                                    onchange="toggleProductFields()">
+                                <div
+                                    class="p-6 rounded-2xl border-2 border-gray-100 peer-checked:border-yoko-primary peer-checked:bg-green-50/50 transition-all flex flex-col items-center gap-3 group-hover:border-gray-300">
+                                    <div
+                                        class="w-12 h-12 rounded-full bg-white border border-gray-200 flex items-center justify-center text-2xl shadow-sm peer-checked:scale-110 transition-transform">
+                                        🍱
+                                    </div>
+                                    <div class="text-center">
+                                        <p
+                                            class="font-bold text-yoko-dark group-hover:text-yoko-primary transition-colors">
+                                            Menú Extra</p>
+                                        <p class="text-xs text-gray-400 mt-1">Bebida, Postre, Side...</p>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </section>
+
+                    <div class="w-full h-px bg-gray-100"></div>
+
+                    <!-- STEP 2: CATEGORY (Smart Switching) -->
+                    <section>
+                        <label class="block text-xs font-bold uppercase text-gray-400 tracking-wider mb-4">2. Categoría
+                            & Detalles</label>
+
+                        <!-- For Ingredients -->
+                        <div id="field-ingred-type" class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            <!-- Loop Options simplified in HTML for cleaner code, using generic styled Labels -->
+                            <label class="cursor-pointer">
+                                <input type="radio" name="ingred_type" value="base" class="peer sr-only" checked>
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🍚
+                                    Base</span>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="ingred_type" value="protein" class="peer sr-only">
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🐟
+                                    Proteína</span>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="ingred_type" value="topping" class="peer sr-only">
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🥕
+                                    Topping</span>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="ingred_type" value="crunch" class="peer sr-only">
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🥜
+                                    Crunch</span>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="ingred_type" value="sauce" class="peer sr-only">
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🍯
+                                    Salsa</span>
+                            </label>
+                        </div>
+
+                        <!-- For Menu Items -->
+                        <div id="field-menu-cat" class="hidden grid grid-cols-2 gap-3">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="menu_category" value="signature_bowl" class="peer sr-only">
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🍲
+                                    Signature Bowl</span>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="menu_category" value="side" class="peer sr-only" checked>
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🥟
+                                    Entrada / Extra</span>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="menu_category" value="drink" class="peer sr-only">
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🥤
+                                    Bebida</span>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="menu_category" value="dessert" class="peer sr-only">
+                                <span
+                                    class="block px-3 py-2 rounded-xl border border-gray-200 text-center text-sm font-bold text-gray-500 peer-checked:bg-yoko-primary peer-checked:text-white peer-checked:border-yoko-primary transition-all">🍰
+                                    Postre</span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <!-- STEP 3: BASIC INFO -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Nombre</label>
+                            <input type="text" name="name"
+                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold text-yoko-dark focus:border-yoko-primary focus:bg-white transition-colors outline-none"
+                                placeholder="Ej. Atún Spicy" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Icono (Emoji)</label>
+                            <input type="text" name="icon"
+                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold text-center text-yoko-dark focus:border-yoko-primary focus:bg-white transition-colors outline-none"
+                                placeholder="🐟">
+                        </div>
+                    </div>
+
+
+                    <!-- STEP 4: CONDITIONS (The "Pro" Part) -->
+                    <section class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                        <label
+                            class="block text-xs font-bold uppercase text-gray-400 tracking-wider mb-4 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders"></i> Condiciones & Reglas
+                        </label>
+
+                        <div class="space-y-4">
+                            <!-- Premium Toggle -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="font-bold text-sm text-yoko-dark">¿Es Premium?</p>
+                                    <p class="text-xs text-gray-400">Si se activa, se cobrará un costo adicional
+                                        siempre.</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="is_premium_toggle" class="sr-only peer"
+                                        onchange="document.getElementById('price-condition').classList.toggle('hidden')">
+                                    <div
+                                        class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yoko-accent">
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Cost Input (Hidden if not premium) -->
+                            <div id="price-condition" class="hidden animate-fade-in pl-4 border-l-2 border-yoko-accent">
+                                <label class="block text-xs font-bold uppercase text-yoko-accent mb-1">Costo Adicional
+                                    ($)</label>
+                                <input type="number" name="price"
+                                    class="w-32 bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-yoko-dark outline-none focus:border-yoko-accent"
+                                    placeholder="0.00" step="1">
+                            </div>
+
+                            <hr class="border-gray-200">
+
+                            <!-- Stock Input -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="font-bold text-sm text-yoko-dark">Stock Inicial</p>
+                                    <p class="text-xs text-gray-400">Cantidad disponible (0 = Agotado).</p>
+                                </div>
+                                <div
+                                    class="flex items-center bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                    <button type="button" onclick="this.nextElementSibling.stepDown()"
+                                        class="px-3 py-2 bg-gray-50 hover:bg-gray-100 border-r border-gray-200"><i
+                                            class="fa-solid fa-minus text-xs"></i></button>
+                                    <input type="number" name="stock"
+                                        class="w-16 text-center font-bold text-sm outline-none" value="50">
+                                    <button type="button" onclick="this.previousElementSibling.stepUp()"
+                                        class="px-3 py-2 bg-gray-50 hover:bg-gray-100 border-l border-gray-200"><i
+                                            class="fa-solid fa-plus text-xs"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- STEP 5: VARIANTS (New for 3.2) -->
+                    <section id="field-variants" class="hidden bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                        <label
+                            class="block text-xs font-bold uppercase text-gray-400 tracking-wider mb-4 flex items-center gap-2">
+                            <i class="fa-solid fa-list-ul"></i> Variantes / Especialidades
+                        </label>
+                        <p class="text-xs text-gray-400 mb-4">Agrega opciones específicas (ej. "Spicy Tuna",
+                            "Arrachera").</p>
+
+                        <div id="variants-container" class="space-y-3 mb-4">
+                            <!-- Variant Rows injected here -->
+                        </div>
+
+                        <button type="button" onclick="addVariantRow()"
+                            class="text-yoko-primary font-bold text-sm flex items-center gap-2 hover:bg-white hover:shadow-md px-3 py-2 rounded-lg transition-all">
+                            <i class="fa-solid fa-plus-circle"></i> Agregar Variante
+                        </button>
+                    </section>
+
+                </form>
+            </div>
+
+            <!-- Footer -->
+            <div class="p-6 border-t border-gray-100 bg-gray-50 flex gap-4 shrink-0">
+                <button onclick="closeProductModal()"
+                    class="flex-1 py-3 px-6 rounded-xl font-bold text-gray-500 hover:bg-gray-200 transition-colors">Cancelar</button>
+                <button onclick="saveProduct()" id="prod-btn-save"
+                    class="flex-[2] py-3 px-6 rounded-xl bg-yoko-primary text-white font-bold shadow-lg shadow-green-900/20 hover:bg-yoko-secondary transition-all flex items-center justify-center gap-2">
+                    <span>Guardar Producto</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="edit-modal"
+        class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-xl p-6 transform scale-95 transition-transform duration-300"
+            id="edit-modal-content">
+            <h3 class="font-bold text-xl text-yoko-dark mb-1">Editar Precio</h3>
+            <p class="text-sm text-gray-400 mb-6" id="edit-modal-name">Item Name</p>
+
+            <div class="relative mb-6">
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                <input type="number" id="edit-modal-input"
+                    class="w-full pl-8 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl font-bold text-lg text-yoko-dark outline-none focus:border-yoko-primary focus:ring-2 focus:ring-green-100 transition-all"
+                    placeholder="0.00" step="0.50">
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="closeEditModal()"
+                    class="flex-1 py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-50 transition-colors">Cancelar</button>
+                <button id="edit-modal-save"
+                    class="flex-1 py-3 rounded-xl bg-yoko-primary text-white font-bold shadow-lg shadow-green-900/10 hover:bg-yoko-secondary transition-colors">Guardar</button>
+            </div>
+        </div>
+    </div>
+    <div id="order-modal"
+        class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300"
+            id="order-modal-content">
+            <div class="bg-yoko-primary p-6 text-white relative">
+                <button onclick="closeModal()"
+                    class="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+                <p class="text-xs font-bold uppercase tracking-widest opacity-70 mb-1">Detalle del Pedido</p>
+                <h3 class="text-3xl font-serif font-bold" id="modal-id">#000000</h3>
+                <p class="text-sm mt-2 opacity-90" id="modal-date">Hoy, 10:00 AM</p>
+            </div>
+            <div class="p-6 max-h-[60vh] overflow-y-auto">
+                <!-- Customer -->
+                <div class="flex items-start gap-4 mb-6">
+                    <div
+                        class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 shrink-0">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <div>
+                        <p class="font-bold text-yoko-dark text-lg" id="modal-customer">Cliente</p>
+                        <p class="text-gray-500 text-sm" id="modal-phone">Teléfono</p>
+                        <div
+                            class="mt-2 text-xs bg-yellow-50 text-yellow-700 px-3 py-1.5 rounded-lg border border-yellow-100 flex items-start gap-2">
+                            <i class="fa-solid fa-map-pin mt-0.5"></i>
+                            <span id="modal-address">Dirección de entrega...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Items list -->
+                <h4 class="font-bold text-gray-400 text-xs uppercase tracking-wider mb-3">Items del Pedido</h4>
+                <div class="space-y-4" id="modal-items">
+                    <!-- Items injected here -->
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+                <div>
+                    <p class="text-xs text-gray-400 font-bold uppercase">Total a Cobrar</p>
+                    <p class="text-2xl font-bold text-yoko-primary" id="modal-total">$0.00</p>
+                    <button onclick="printOrder()" id="btn-print-order"
+                        class="mt-2 text-xs font-bold text-gray-500 hover:text-yoko-dark flex items-center gap-1">
+                        <i class="fa-solid fa-print"></i> Imprimir Ticket
+                    </button>
+                </div>
+                <div id="modal-actions" class="flex gap-2">
+                    <!-- Actions injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rule Logic Modal -->
+    <div id="rule-modal"
+        class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm opacity-0 transition-opacity duration-300">
+        <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 md:p-8 transform scale-95 transition-transform duration-300"
+            id="rule-modal-content">
+            <h3 class="font-bold text-2xl text-yoko-dark mb-1 font-serif">Nueva Regla</h3>
+            <p class="text-sm text-gray-400 mb-6">Define una condición lógica para el armado del bowl.</p>
+
+            <form id="rule-form" class="space-y-4">
+
+                <!-- TRIGGER -->
+                <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <label class="block text-xs font-bold uppercase text-gray-400 mb-2">1. Si el cliente
+                        selecciona:</label>
+                    <select name="trigger_id" id="rule-trigger"
+                        class="w-full p-2 bg-white border border-gray-200 rounded-lg font-bold text-yoko-dark outline-none focus:border-yoko-primary">
+                        <option value="">Cargando ingredientes...</option>
+                    </select>
+                </div>
+
+                <!-- ACTION -->
+                <div class="flex items-center gap-4 justify-center py-2">
+                    <i class="fa-solid fa-arrow-down text-gray-300 text-xl"></i>
+                    <span class="text-xs font-bold uppercase text-gray-400">Entonces</span>
+                    <i class="fa-solid fa-arrow-down text-gray-300 text-xl"></i>
+                </div>
+
+                <!-- ACTION TYPE -->
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-400 mb-2">2. Acción a tomar:</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="action" value="ban" class="peer sr-only" checked>
+                            <div
+                                class="p-3 rounded-xl border border-gray-200 text-center peer-checked:bg-red-50 peer-checked:text-red-600 peer-checked:border-red-200 transition-all font-bold text-sm">
+                                <i class="fa-solid fa-ban mb-1 block"></i> Bloquear / Deshabilitar
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="action" value="require" class="peer sr-only">
+                            <div
+                                class="p-3 rounded-xl border border-gray-200 text-center peer-checked:bg-blue-50 peer-checked:text-blue-600 peer-checked:border-blue-200 transition-all font-bold text-sm">
+                                <i class="fa-solid fa-check-double mb-1 block"></i> Requerir (Obligatorio)
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- TARGET -->
+                <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <label class="block text-xs font-bold uppercase text-gray-400 mb-2">3. Sobre el ingrediente:</label>
+                    <select name="target_id" id="rule-target"
+                        class="w-full p-2 bg-white border border-gray-200 rounded-lg font-bold text-yoko-dark outline-none focus:border-yoko-primary">
+                        <option value="">Cargando ingredientes...</option>
+                    </select>
+                </div>
+
+                <!-- MESSAGE -->
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-400 mb-1">Mensaje al Cliente
+                        (Opcional)</label>
+                    <input type="text" name="message"
+                        class="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:border-yoko-primary"
+                        placeholder="Ej. Esta salsa no combina con esa base...">
+                </div>
+
+            </form>
+
+            <div class="flex gap-3 mt-8">
+                <button onclick="closeRuleModal()"
+                    class="flex-1 py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-50 transition-colors">Cancelar</button>
+                <button onclick="saveRule()" id="rule-btn-save"
+                    class="flex-1 py-3 rounded-xl bg-yoko-primary text-white font-bold shadow-lg shadow-green-900/10 hover:bg-yoko-secondary transition-colors">Guardar
+                    Regla</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="/admin/dashboard.js"></script>
+</body>
+
+</html>

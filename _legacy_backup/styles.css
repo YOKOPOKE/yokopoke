@@ -1,0 +1,736 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Styles for "Pro" Feel */
+body {
+    background-color: #F7F9F5;
+    color: #1a2e1d;
+}
+
+.glass-nav {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.text-stroke {
+    -webkit-text-stroke: 1px #2F5233;
+    color: transparent;
+}
+
+.hero-pattern {
+    background-image: radial-gradient(#2F5233 0.5px, transparent 0.5px);
+    background-size: 20px 20px;
+    opacity: 0.05;
+}
+
+/* Custom Scrollbar for Light Theme (Global) */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #F7F9F5;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #2F5233;
+    border-radius: 4px;
+}
+
+/* Custom Scrollbar for Dark Panel */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    /* Very subtle track */
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    /* Semi-transparent white thumb */
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+/* Map Container Styling */
+.map-container iframe {
+    filter: grayscale(20%) contrast(1.1);
+    transition: all 0.3s;
+}
+
+.map-container:hover iframe {
+    filter: none;
+}
+
+/* Ingredient Card Selection */
+.ingredient-radio:checked+div {
+    border-color: #2F5233;
+    background-color: #E8F5E9;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(47, 82, 51, 0.15);
+    animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.ingredient-checkbox:checked+div {
+    border-color: #FF6B6B;
+    background-color: #FFF0F0;
+    animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes pop {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+.ingredient-checkbox:checked+div .check-icon {
+    opacity: 1;
+    transform: scale(1);
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Mobile Menu Circular Reveal */
+.menu-circular {
+    clip-path: circle(0px at calc(100% - 50px) 40px);
+    /* Start at button position (approx) */
+    transition: clip-path 0.7s cubic-bezier(0.77, 0, 0.175, 1), opacity 0.3s ease-in-out;
+    background-color: #1a2e1d;
+    /* Yoko Dark */
+    pointer-events: none;
+    /* Prevent clicks when closed */
+    opacity: 0;
+    /* Hide completely when closed to prevent glitches */
+}
+
+/* Mobile Menu Open State */
+.menu-circular.open {
+    clip-path: circle(250vmax at calc(100% - 50px) 40px);
+    /* Massive radius to cover screen */
+    pointer-events: auto;
+    opacity: 1;
+}
+
+/* --- PREMIUM VISUALS (Low Perf Cost) --- */
+
+/* 1. Grainy Texture Overlay */
+.bg-noise {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* 2. Ambient Blobs */
+.blob-cont {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -2;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.4;
+    animation: drift 20s infinite alternate;
+}
+
+.blob-1 {
+    top: 10%;
+    left: 10%;
+    width: 500px;
+    height: 500px;
+    background: #2F5233;
+    animation-delay: 0s;
+}
+
+.blob-2 {
+    bottom: 20%;
+    right: 10%;
+    width: 400px;
+    height: 400px;
+    background: #FF6B6B;
+    /* Accent color */
+    animation-delay: -5s;
+    opacity: 0.2;
+}
+
+@keyframes drift {
+    0% {
+        transform: translate(0, 0);
+    }
+
+    100% {
+        transform: translate(30px, 50px);
+    }
+}
+
+/* 3. Floating Animation for Hero Bowl */
+@keyframes float {
+    0% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-20px);
+    }
+
+    100% {
+        transform: translateY(0px);
+    }
+}
+
+.animate-float {
+    animation: float 6s ease-in-out infinite;
+}
+
+/* --- RIPPLE EFFECT --- */
+.btn-ripple {
+    position: relative;
+    overflow: hidden;
+}
+
+.ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.6);
+    transform: scale(0);
+    animation: ripple-anim 1.0s ease-out;
+    pointer-events: none;
+}
+
+@keyframes ripple-anim {
+    0% {
+        transform: scale(0);
+        opacity: 0.6;
+    }
+
+    100% {
+        transform: scale(3.5);
+        opacity: 0;
+    }
+}
+
+/* Hover effect for navigation links */
+.nav-link-hover {
+    position: relative;
+    display: inline-block;
+}
+
+.nav-link-hover::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    bottom: -4px;
+    left: 0;
+    background-color: #D4AF37;
+    transition: width 0.3s ease-in-out;
+}
+
+.nav-link-hover:hover::after {
+    width: 100%;
+}
+
+/* iOS Safe Area Fix for Mobile Summary */
+#mobile-sticky {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 20px);
+    /* Ensure content considers home indicator/address bar + buffer */
+}
+
+/* Hover Animations */
+.hover-underline-animation {
+    display: inline-block;
+    position: relative;
+    color: #1a2e1d;
+}
+
+.hover-underline-animation::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    transform: scaleX(0);
+    height: 2px;
+    bottom: 0;
+    left: 0;
+    background-color: #FF6B6B;
+    transform-origin: bottom right;
+    transition: transform 0.25s ease-out;
+}
+
+.hover-underline-animation:hover::after {
+    transform: scaleX(1);
+    transform-origin: bottom left;
+}
+
+/* --- NEW ANIMATIONS --- */
+
+/* Loading Bar Animation */
+@keyframes loading {
+    0% {
+        width: 0%;
+        transform: translateX(-100%);
+    }
+
+    50% {
+        width: 100%;
+        transform: translateX(0%);
+    }
+
+    100% {
+        width: 100%;
+        transform: translateX(100%);
+    }
+}
+
+/* Staggered Text Reveal */
+.reveal-text {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: revealUp 0.8s cubic-bezier(0.5, 0, 0, 1) forwards;
+}
+
+@keyframes revealUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.delay-100 {
+    animation-delay: 0.1s;
+}
+
+.delay-200 {
+    animation-delay: 0.2s;
+}
+
+.delay-300 {
+    animation-delay: 0.3s;
+}
+
+/* Price Pop Animation */
+.pop-price {
+    animation: pricePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes pricePop {
+    0% {
+        transform: scale(1);
+        color: #FF6B6B;
+    }
+
+    50% {
+        transform: scale(1.3);
+        color: #FF6B6B;
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Button Ripple Effect */
+.ripple {
+    position: absolute;
+    border-radius: 50%;
+    transform: scale(0);
+    animation: ripple 0.6s linear;
+    background-color: rgba(255, 255, 255, 0.7);
+}
+
+@keyframes ripple {
+    to {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+/* Toast Notification */
+.toast-notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: white;
+    padding: 12px 24px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 200;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border-left: 4px solid #2F5233;
+}
+
+.toast-notification.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Pop In Animation for Buttons */
+@keyframes popIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+
+    70% {
+        transform: scale(1.1);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.pop-in {
+    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Glassmorphism Ingredient Card */
+.glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    /* Soft shadow */
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.glass-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.9);
+    border-color: #D4AF37;
+    /* Gold/Accent hint */
+}
+
+/* Shimmer Effect on Hover */
+.glass-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(255, 255, 255, 0.6),
+            transparent);
+    transition: 0.5s;
+}
+
+.glass-card:hover::before {
+    left: 100%;
+}
+
+/* CHECKOUT VIEW STYLES */
+.shadow-up {
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Custom Checkbox for Payment */
+input[type="radio"]:checked+div {
+    /* Styles are handled by Tailwind classes in HTML, keeping CSS minimal */
+}
+
+/* Toast Animations */
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes slideOutDown {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(10px) scale(0.95);
+    }
+}
+
+/* End of styles */
+
+/* PRODUCT SELECTOR PREMIUM STYLES */
+.product-card {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.product-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(47, 82, 51, 0.1), transparent);
+    transition: 0.6s;
+}
+
+.product-card:hover::before {
+    left: 100%;
+}
+
+.product-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.product-card.border-yoko-primary {
+    background: linear-gradient(135deg, #E8F5E9 0%, #ffffff 100%);
+    box-shadow: 0 8px 30px rgba(47, 82, 51, 0.2);
+}
+
+.size-btn {
+    position: relative;
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+}
+
+.size-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.size-btn.border-yoko-primary {
+    background: linear-gradient(135deg, #2F5233 0%, #1a2e1d 100%);
+    color: white;
+    box-shadow: 0 6px 20px rgba(47, 82, 51, 0.3);
+    transform: scale(1.05);
+}
+
+.size-btn.border-yoko-primary:hover {
+    transform: scale(1.05) translateY(-2px);
+}
+
+#start-builder-btn {
+    position: relative;
+    overflow: hidden;
+    font-size: 1.125rem;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+}
+
+#start-builder-btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+#start-builder-btn:hover::after {
+    width: 300px;
+    height: 300px;
+}
+
+#start-builder-btn:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(47, 82, 51, 0.3);
+}
+
+#start-builder-btn:not(:disabled):active {
+    transform: translateY(0);
+}
+
+/* Product selector animations */
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.product-card {
+    animation: fadeInScale 0.5s ease-out;
+}
+
+.product-card:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+/* PREMIUM NAVBAR STYLES */
+#main-nav {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.nav-link {
+    position: relative;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #2F5233;
+    transition: all 0.3s ease;
+}
+
+.nav-link:hover {
+    color: #D4AF37;
+}
+
+.nav-underline {
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #D4AF37, #2F5233);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-link:hover .nav-underline {
+    width: 100%;
+}
+
+.cta-button {
+    position: relative;
+    padding: 0.875rem 2rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.875rem;
+    color: white;
+    border-radius: 9999px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(47, 82, 51, 0.3);
+}
+
+.cta-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(47, 82, 51, 0.4);
+}
+
+.cta-button-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #2F5233 0%, #1a2e1d 100%);
+    transition: transform 0.3s ease;
+}
+
+.cta-button:hover .cta-button-bg {
+    transform: scale(1.05);
+}
+
+/* Animated Hamburger */
+.hamburger {
+    width: 24px;
+    height: 18px;
+    position: relative;
+}
+
+.hamburger span {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: #2F5233;
+    border-radius: 2px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hamburger span:nth-child(1) {
+    top: 0;
+}
+
+.hamburger span:nth-child(2) {
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.hamburger span:nth-child(3) {
+    bottom: 0;
+}
+
+#mobile-menu-btn.active .hamburger span:nth-child(1) {
+    top: 50%;
+    transform: translateY(-50%) rotate(45deg);
+}
+
+#mobile-menu-btn.active .hamburger span:nth-child(2) {
+    opacity: 0;
+    transform: translateX(-100%);
+}
+
+#mobile-menu-btn.active .hamburger span:nth-child(3) {
+    bottom: 50%;
+    transform: translateY(50%) rotate(-45deg);
+}
+
+/* Scroll effect for navbar */
+#main-nav.scrolled {
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.08);
+}
