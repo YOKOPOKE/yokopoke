@@ -341,12 +341,39 @@ export default function Builder({ initialProductType = 'bowl', onBack }: { initi
     ];
 
     const STEPS = order.productType === 'burger' ? BURGER_STEPS : BOWL_STEPS;
+
+    // Safety Check for "White Screen" bug
     const currentScreen = STEPS[currentStep];
+    if (!currentScreen) {
+        console.error('Builder Error: Invalid Step Index', { currentStep, totalSteps: STEPS.length, productType: order.productType, rulesLoaded: rules.length > 0 });
+        // Auto-recover if possible
+        if (currentStep > 0) {
+            setCurrentStep(0);
+            return <div className="p-10 text-center">Recuperando sesión...</div>;
+        }
+        return (
+            <div className="p-20 text-center">
+                <h2 className="text-xl font-bold text-red-500 mb-4">Error de Sincronización</h2>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="bg-yoko-dark text-white px-6 py-2 rounded-full font-bold shadow-lg"
+                >
+                    Recargar Página
+                </button>
+            </div>
+        );
+    }
 
     // Scroll to top on step change
     useEffect(() => {
         const builderTitle = document.getElementById('builder-title');
-        if (builderTitle) builderTitle.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (builderTitle) {
+            try {
+                builderTitle.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (e) {
+                // Ignore scroll errors
+            }
+        }
     }, [currentStep]);
 
     const retryFetch = () => window.location.reload();
