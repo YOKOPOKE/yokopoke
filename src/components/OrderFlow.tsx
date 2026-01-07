@@ -32,6 +32,7 @@ export default function OrderFlow() {
         }
 
         const handleOpenBuilder = (e: any) => {
+            console.log('Event Received via Listener:', e.detail);
             const mode = e.detail?.mode || 'bowl';
             setBuilderMode(mode);
             setShowBuilder(true);
@@ -54,30 +55,11 @@ export default function OrderFlow() {
 
     return (
         <div className="min-h-screen bg-white">
-            <AnimatePresence mode="wait">
-                {!showBuilder ? (
-                    <motion.div
-                        key="selector"
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20, transition: { duration: 0.2 } }}
-                        transition={{ duration: 0.3 }}
-                    >
-                        <ProductSelector onSelect={handleProductSelect} />
-                    </motion.div>
-                ) : (
-                    <motion.div
-                        key="builder"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20, transition: { duration: 0.2 } }}
-                        transition={{ duration: 0.3 }}
-                        onAnimationComplete={() => console.log('Builder Animation Complete')}
-                    >
-                        <Builder initialProductType={builderMode} onBack={handleBack} />
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {!showBuilder ? (
+                <ProductSelector onSelect={handleProductSelect} />
+            ) : (
+                <Builder initialProductType={builderMode} onBack={handleBack} />
+            )}
         </div>
     );
 }
