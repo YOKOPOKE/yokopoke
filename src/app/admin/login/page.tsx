@@ -19,17 +19,25 @@ export default function AdminLogin() {
         setLoading(true);
         setError('');
 
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password
-        });
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password
+            });
 
-        if (error) {
-            setError('Credenciales inválidas');
+            if (error) {
+                console.error('Login Error:', error);
+                setError(error.message === 'Invalid login credentials' ? 'Credenciales incorrectas' : 'Error al iniciar sesión');
+                setLoading(false);
+            } else {
+                console.log('Login Success:', data);
+                // Force a hard navigation to ensure clean state if router.push is acting up
+                window.location.href = '/admin';
+            }
+        } catch (err) {
+            console.error('Unexpected Login Error:', err);
+            setError('Ocurrió un error inesperado');
             setLoading(false);
-        } else {
-            router.push('/admin');
-            router.refresh(); // Ensure middleware picks up new cookie
         }
     };
 
