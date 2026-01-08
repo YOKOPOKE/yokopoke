@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@/lib/supabase-browser';
 
 export default function AdminLogin() {
     const [email, setEmail] = useState('');
@@ -13,12 +13,7 @@ export default function AdminLogin() {
     const [error, setError] = useState('');
     const router = useRouter();
 
-    // Use hardcoded fallback if env vars are missing during build
-    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xsolxbroqqjkoseksmny.supabase.co';
-    const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzb2x4YnJvcXFqa29zZWtzbW55Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc2MTQ2MTksImV4cCI6MjA4MzE5MDYxOX0.sGIq7yEoEw5Sw1KKHhRQOEJGX2HjEDcOelO49IVhndk';
-
-    // Use createBrowserClient to ensure cookies are set for Middleware
-    const supabase = createBrowserClient(SUPABASE_URL, SUPABASE_KEY);
+    const supabase = createClient();
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();

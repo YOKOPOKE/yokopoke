@@ -78,9 +78,17 @@ export async function middleware(request: NextRequest) {
             }
         )
 
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+        // Debug logging
+        if (request.nextUrl.pathname.startsWith('/admin')) {
+            console.log(`Middleware Auth Check [${request.nextUrl.pathname}]`);
+            console.log('User Found:', !!user);
+            if (authError) console.log('Auth Error:', authError.message);
+        }
 
         if (!user && request.nextUrl.pathname.startsWith('/admin')) {
+            console.log('Middleware: Redirecting to login due to missing user.');
             const redirectUrl = request.nextUrl.clone()
             redirectUrl.pathname = '/admin/login'
             return NextResponse.redirect(redirectUrl)
