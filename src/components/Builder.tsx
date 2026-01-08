@@ -298,7 +298,7 @@ export default function Builder({ initialProductSlug = 'poke-mediano', onBack }:
 
     // --- RENDER ---
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-400 font-bold animate-pulse">Cargando constructor...</div>;
+    if (loading) return <BuilderSkeleton />;
     if (error || !product) return <div className="min-h-screen flex items-center justify-center text-red-500 font-bold">Error: {error}</div>;
 
     const currentStep = product.steps[currentStepIndex];
