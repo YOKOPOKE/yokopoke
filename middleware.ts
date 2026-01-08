@@ -19,18 +19,9 @@ export async function middleware(request: NextRequest) {
             return response;
         }
 
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-        if (!supabaseUrl || !supabaseKey) {
-            console.error('Middleware Error: Missing Supabase Environment Variables');
-            // If we can't check auth, we better redirect to login anyway to be safe, 
-            // or return a friendly error. For now, let's redirect to login which might have
-            // its own connection logic or at least fail gracefully client-side.
-            const redirectUrl = request.nextUrl.clone()
-            redirectUrl.pathname = '/admin/login'
-            return NextResponse.redirect(redirectUrl)
-        }
+        // Use fallback keys if env vars are missing (Fix for Vercel Edge Runtime)
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xsolxbroqqjkoseksmny.supabase.co';
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzb2x4YnJvcXFqa29zZWtzbW55Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc2MTQ2MTksImV4cCI6MjA4MzE5MDYxOX0.sGIq7yEoEw5Sw1KKHhRQOEJGX2HjEDcOelO49IVhndk';
 
         const supabase = createServerClient(
             supabaseUrl,
