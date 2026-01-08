@@ -25,7 +25,7 @@ export default function CartDrawer() {
         stiffness: 500, // Increased stiffness for speed
         damping: 30,    // Reduced damping for snappier feel (less "drag")
         mass: 1
-    };
+    } as any;
 
     if (!isCartOpen) return null;
 
