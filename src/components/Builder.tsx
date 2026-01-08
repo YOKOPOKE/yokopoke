@@ -405,31 +405,42 @@ export default function Builder({ initialProductSlug = 'poke-mediano', onBack }:
                                         <motion.div
                                             key={opt.id}
                                             variants={itemVariants}
-                                            onClick={() => handleToggleOption(opt)}
+                                            onClick={() => opt.is_available && handleToggleOption(opt)}
                                             className={`
-                                                cursor-pointer rounded-2xl p-4 border transition-all duration-200 group relative overflow-hidden transform-gpu
+                                                rounded-2xl p-4 border transition-all duration-200 group relative overflow-hidden transform-gpu
+                                                ${!opt.is_available
+                                                    ? 'opacity-50 cursor-not-allowed bg-slate-100 border-slate-200 grayscale'
+                                                    : 'cursor-pointer'
+                                                }
                                                 ${isSelected
                                                     ? 'border-violet-500 bg-violet-50/50 shadow-md ring-2 ring-violet-500/20'
-                                                    : 'border-slate-200 bg-white hover:border-violet-300 hover:shadow-lg hover:-translate-y-1'
+                                                    : opt.is_available && 'border-slate-200 bg-white hover:border-violet-300 hover:shadow-lg hover:-translate-y-1'
                                                 }
                                             `}
                                         >
                                             <div className="flex justify-between w-full">
                                                 <div className={`
                                                             w-6 h-6 rounded-full flex items-center justify-center border transition-colors
-                                                            ${isSelected ? 'bg-violet-500 border-violet-500 text-white' : 'border-slate-300 bg-slate-50'}
+                                                            ${!opt.is_available ? 'bg-slate-200 border-slate-300' :
+                                                        isSelected ? 'bg-violet-500 border-violet-500 text-white' : 'border-slate-300 bg-slate-50'}
                                                         `}>
                                                     {isSelected && <Check size={14} strokeWidth={3} />}
+                                                    {!opt.is_available && <X size={14} className="text-slate-400" />}
                                                 </div>
-                                                {displayPrice > 0 && (
+                                                {displayPrice > 0 && opt.is_available && (
                                                     <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${isSelected ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>
                                                         +${displayPrice}
                                                     </span>
                                                 )}
+                                                {!opt.is_available && (
+                                                    <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-red-100 text-red-500 uppercase tracking-wider">
+                                                        Agotado
+                                                    </span>
+                                                )}
                                             </div>
 
-                                            <div className="relative z-10 w-full">
-                                                <div className="font-bold text-base leading-tight">{opt.name}</div>
+                                            <div className="relative z-10 w-full mt-2">
+                                                <div className={`font-bold text-base leading-tight ${!opt.is_available ? 'text-slate-400' : 'text-slate-700'}`}>{opt.name}</div>
                                             </div>
                                         </motion.div>
                                     );

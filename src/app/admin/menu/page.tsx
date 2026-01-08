@@ -330,9 +330,39 @@ export default function AdminMenuPage() {
                                     </button>
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-800 mb-1">{item.name}</h3>
-                                <p className="font-mono text-slate-400 text-sm mb-4">
-                                    {(item as any).premium_price > 0 ? `$${(item as any).premium_price}` : 'Gratis / Base'}
-                                </p>
+                                <div className="flex justify-between items-center mb-4">
+                                    <p className="font-mono text-slate-400 text-sm">
+                                        {(item as any).premium_price > 0 ? `$${(item as any).premium_price}` : 'Gratis / Base'}
+                                    </p>
+                                    <button
+                                        onClick={async (e) => {
+                                            e.stopPropagation();
+                                            const newVal = !(item as any).is_available;
+                                            // Optimistic update
+                                            const newIngredients = [...ingredients];
+                                            const idx = newIngredients.findIndex(i => i.id === item.id);
+                                            if (idx !== -1) {
+                                                newIngredients[idx] = { ...newIngredients[idx], is_available: newVal };
+                                                setIngredients(newIngredients);
+                                            }
+
+                                            // DB Update
+                                            const { error } = await supabase.from('ingredients').update({ is_available: newVal }).eq('id', item.id);
+                                            if (error) {
+                                                toast.error('Error actualizando stock');
+                                                fetchData(); // Revert on error
+                                            } else {
+                                                toast.success(newVal ? 'Marcado Disponible' : 'Marcado Agotado');
+                                            }
+                                        }}
+                                        className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${(item as any).is_available
+                                                ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                                                : 'bg-red-100 text-red-600 hover:bg-red-200'
+                                            }`}
+                                    >
+                                        {(item as any).is_available ? 'Disponible' : 'Agotado'}
+                                    </button>
+                                </div>
                             </motion.div>
                         ))}
                     </motion.div>
