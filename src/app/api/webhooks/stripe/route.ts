@@ -37,8 +37,9 @@ export async function POST(req: Request) {
                 const { error } = await supabase
                     .from('orders')
                     .update({
-                        status: 'paid', // Update status to paid
-                        // payment_id: session.payment_intent // We could store this if we add a column
+                        status: 'pending', // Move to 'pending' so it shows up in Kitchen "Por Aceptar"
+                        payment_status: 'paid',
+                        payment_method: 'card'
                     })
                     .eq('id', orderId);
 

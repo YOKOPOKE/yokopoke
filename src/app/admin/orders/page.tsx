@@ -14,7 +14,9 @@ type Order = {
     created_at: string;
     customer_name: string;
     total: number;
-    status: 'pending' | 'preparing' | 'completed' | 'cancelled';
+    status: 'pending' | 'preparing' | 'completed' | 'cancelled' | 'awaiting_payment';
+    payment_status?: string;
+    payment_method?: string;
     delivery_method: 'delivery' | 'pickup';
     items: any[];
     address?: string;
@@ -85,7 +87,12 @@ export default function AdminOrdersPage() {
 
     const fetchOrders = async () => {
         setLoading(true);
-        const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(50);
+        // Fetch orders, but exclude those stuck in 'awaiting_payment' (abandoned checkout)
+        const { data } = await supabase.from('orders')
+            .select('*')
+            .neq('status', 'awaiting_payment')
+            .order('created_at', { ascending: false })
+            .limit(50);
         if (data) setOrders(data as Order[]);
         setLoading(false);
     };
@@ -96,9 +103,25 @@ export default function AdminOrdersPage() {
             .channel('kitchen-ultra-v3')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
                 const newOrder = payload.new as Order;
+                // Ignore if it's just created but waiting for payment
+                if (newOrder.status === 'awaiting_payment') return;
+
                 setOrders(prev => [newOrder, ...prev]);
                 setIncomingOrder(newOrder);
                 toast.success(`🎉 Pedido nuevo: ${newOrder.customer_name}`);
+            })
+            // Listen for UPDATES (e.g. when Stripe Webhook flips it to 'pending')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
+                const updated = payload.new as Order;
+                if (updated.status === 'pending' && payload.old.status === 'awaiting_payment') {
+                    // This is a successful payment coming in!
+                    setOrders(prev => [updated, ...prev]);
+                    setIncomingOrder(updated);
+                    toast.success(`💸 Pago confirmado: ${updated.customer_name}`);
+                } else {
+                    // Standard status update
+                    setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
+                }
             })
             .subscribe((status) => {
                 if (status === 'SUBSCRIBED') toast.info('👩‍🍳 Cocina Sincronizada');
@@ -484,6 +507,23 @@ const OrderCardUltra = ({ order, updateStatus }: { order: Order, updateStatus: a
                 <div className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-sm ${timerStyle}`}>
                     <Timer size={12} /> {elapsed}m
                 </div>
+            </div>
+
+            {/* Payment Badge */}
+            <div className="mb-2">
+                {(order.payment_method === 'card') && (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${order.payment_status === 'paid'
+                            ? 'bg-violet-100 text-violet-700 border-violet-200'
+                            : 'bg-slate-100 text-slate-500 border-slate-200'
+                        }`}>
+                        {order.payment_status === 'paid' ? '💳 PAGADO (Stripe)' : '⏳ PAGO PENDIENTE'}
+                    </span>
+                )}
+                {(order.payment_method !== 'card') && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-green-100 text-green-700 border-green-200">
+                        💵 EFECTIVO / TRANSFER
+                    </span>
+                )}
             </div>
 
             {/* Content Items */}

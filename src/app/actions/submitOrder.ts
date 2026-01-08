@@ -12,14 +12,24 @@ export async function submitOrder(formData: any, items: OrderItem[], total: numb
     // Based on previous context, we might need to create it or infer it.
     // For now, I'll assume a basic structure or create a migration if needed.
 
+    // Determine initial status based on payment intent
+    // If this is triggering a Stripe checkout, we might want 'awaiting_payment'
+    // But CartDrawer calls this generically. Let's accept a 'paymentMethod' param.
+
+    const paymentMethod = formData.paymentMethod || 'cash';
+    const initialStatus = paymentMethod === 'card' ? 'awaiting_payment' : 'pending';
+    const initialPaymentStatus = paymentMethod === 'card' ? 'unpaid' : 'pending_cash';
+
     const { data: order, error } = await supabase.from('orders').insert({
         customer_name: formData.name,
         customer_phone: formData.phone,
         customer_address: formData.address,
         total: total,
-        status: 'pending',
+        status: initialStatus,
+        payment_status: initialPaymentStatus,
+        payment_method: paymentMethod,
         items: items, // Storing JSONB
-        notes: formData.instructions
+        notes: formData.instructions || ''
     }).select().single();
 
     if (error) {

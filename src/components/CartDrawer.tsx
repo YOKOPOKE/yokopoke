@@ -381,9 +381,9 @@ export default function CartDrawer() {
                                                     // Auto-fill address for pickup to pass validation if empty
                                                     const finalAddress = orderType === 'pickup' ? 'RECOGER EN TIENDA' : formData.address;
 
-                                                    // 1. Save Order First
+                                                    // 1. Save Order First (Status: awaiting_payment)
                                                     const { submitOrder } = await import('@/app/actions/submitOrder');
-                                                    const result = await submitOrder({ ...formData, address: finalAddress }, items, cartTotal);
+                                                    const result = await submitOrder({ ...formData, address: finalAddress, paymentMethod: 'card' }, items, cartTotal);
 
                                                     if (!result.success) throw new Error(result.error);
 
