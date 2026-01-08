@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, Plus, Check } from "lucide-react";
+import { Star, Plus, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import confetti from "canvas-confetti";
@@ -41,16 +41,16 @@ const containerVariants = {
 };
 
 const itemVariants = {
-    hidden: { opacity: 0, y: 40, scale: 0.95 },
+    hidden: { opacity: 0, y: 20, scale: 0.95 },
     show: {
         opacity: 1,
         y: 0,
         scale: 1,
         transition: {
             type: "spring",
-            stiffness: 70,
-            damping: 15, // slightly bouncier than original menu
-            mass: 0.8
+            stiffness: 400, // Apple-style snap
+            damping: 30,    // No bounce, just smooth stop
+            mass: 1
         }
     }
 } as any;
@@ -170,8 +170,8 @@ export default function Menu() {
                     </h2>
                 </div>
 
-                {/* Categories Nav */}
-                <div className="flex justify-center mb-12 overflow-x-auto pb-4 scrollbar-hide">
+                {/* Categories Nav (Desktop) */}
+                <div className="hidden md:flex justify-center mb-12 overflow-x-auto pb-4 scrollbar-hide">
                     <div className="bg-white/70 backdrop-blur-md p-1.5 rounded-full border border-slate-200/60 shadow-lg shadow-slate-200/50 flex gap-2">
                         {categories.map((cat) => (
                             <button
@@ -196,15 +196,59 @@ export default function Menu() {
                     </div>
                 </div>
 
+                {/* Categories Nav (Mobile Carousel) */}
+                <div className="md:hidden w-full px-4 mb-8">
+                    <div className="flex items-center justify-between gap-4 bg-white/80 backdrop-blur-xl p-2 rounded-2xl shadow-lg shadow-violet-100/50 border border-white">
+                        <button
+                            onClick={() => {
+                                const idx = categories.indexOf(activeCategory);
+                                const prev = idx === 0 ? categories.length - 1 : idx - 1;
+                                setActiveCategory(categories[prev]);
+                            }}
+                            className="p-3 bg-white rounded-xl shadow-sm hover:translate-x-[-2px] active:scale-95 transition-all text-violet-600"
+                        >
+                            <ChevronLeft size={24} />
+                        </button>
+
+                        <div className="flex-1 flex flex-col items-center justify-center overflow-hidden">
+                            <span className="text-[10px] font-bold text-violet-400 tracking-[0.2em] uppercase mb-1">
+                                Categoría {categories.indexOf(activeCategory) + 1}/{categories.length}
+                            </span>
+                            <AnimatePresence mode="wait">
+                                <motion.span
+                                    key={activeCategory}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="font-serif font-bold text-lg text-slate-800 text-center leading-none"
+                                >
+                                    {activeCategory}
+                                </motion.span>
+                            </AnimatePresence>
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                const idx = categories.indexOf(activeCategory);
+                                const next = idx === categories.length - 1 ? 0 : idx + 1;
+                                setActiveCategory(categories[next]);
+                            }}
+                            className="p-3 bg-white rounded-xl shadow-sm hover:translate-x-[2px] active:scale-95 transition-all text-violet-600"
+                        >
+                            <ChevronRight size={24} />
+                        </button>
+                    </div>
+                </div>
+
                 {/* Grid */}
                 <motion.div
-                    layout
+                    key="products-grid"
                     variants={containerVariants}
                     initial="hidden"
                     whileInView="show"
-                    viewport={{ once: false, margin: "-50px" }}
-                    key={activeCategory}
-                    className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+                    viewport={{ once: true, margin: "-100px" }}
+                    className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-8"
                 >
                     <AnimatePresence mode="popLayout">
                         {(groupedProducts[activeCategory] || []).map((product) => (
@@ -212,10 +256,13 @@ export default function Menu() {
                                 layout
                                 key={product.id}
                                 variants={itemVariants}
-                                className="bg-white rounded-2xl p-3 shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 group flex flex-col transform-gpu"
+                                initial="hidden"
+                                animate="show"
+                                exit="hidden"
+                                className="bg-white rounded-xl p-2 shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 group flex flex-col will-change-transform transform-gpu"
                             >
                                 {/* Card Content */}
-                                <div className="relative aspect-[4/3] mb-3 overflow-hidden rounded-xl bg-slate-100">
+                                <div className="relative aspect-square mb-2 overflow-hidden rounded-lg bg-slate-100">
                                     {product.image_url ? (
                                         <div className="relative w-full h-full">
                                             <img
@@ -232,18 +279,18 @@ export default function Menu() {
                                             <img src="/placeholder.png" className="opacity-50" />
                                         </div>
                                     )}
-                                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur px-2 py-0.5 rounded-full text-[10px] font-bold text-slate-900 shadow-sm">
+                                    <div className="absolute top-1.5 right-1.5 bg-white/90 backdrop-blur px-1.5 py-0.5 rounded-full text-[10px] font-bold text-slate-900 shadow-sm">
                                         ${product.base_price}
                                     </div>
                                 </div>
 
                                 <div className="flex-1 flex flex-col">
                                     <div className="flex justify-between items-start mb-1">
-                                        <h3 className="font-serif font-bold text-base text-slate-900 leading-tight group-hover:text-violet-600 transition-colors line-clamp-1">
+                                        <h3 className="font-serif font-bold text-sm text-slate-900 leading-tight group-hover:text-violet-600 transition-colors line-clamp-2 min-h-[2.5em]">
                                             {product.name}
                                         </h3>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 mb-4 line-clamp-2 leading-relaxed">
+                                    <p className="text-[10px] text-slate-500 mb-2 line-clamp-2 leading-relaxed hidden sm:block">
                                         {product.description}
                                     </p>
 
@@ -252,7 +299,7 @@ export default function Menu() {
                                             onClick={() => handleAdd(product)}
                                             disabled={justAdded[product.id]}
                                             className={`
-                                                w-full py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 relative overflow-hidden transform-gpu
+                                                w-full py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center justify-center gap-1 relative overflow-hidden transform-gpu
                                                 ${justAdded[product.id]
                                                     ? 'bg-green-100 text-green-700'
                                                     : 'bg-slate-50 text-slate-600 hover:bg-slate-900 hover:text-white hover:shadow-lg hover:shadow-slate-900/20 hover:-translate-y-0.5 active:translate-y-0'}
@@ -260,11 +307,11 @@ export default function Menu() {
                                         >
                                             {justAdded[product.id] ? (
                                                 <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex items-center gap-1">
-                                                    <Check size={14} /> Agregado
+                                                    <Check size={12} /> Agregado
                                                 </motion.div>
                                             ) : (
                                                 <>
-                                                    <Plus size={14} /> Agregar
+                                                    <Plus size={12} /> Agregar
                                                 </>
                                             )}
                                         </button>

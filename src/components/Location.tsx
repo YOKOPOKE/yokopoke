@@ -40,9 +40,9 @@ export default function Location() {
                 </motion.div>
 
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.6 }}
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    transition={{ duration: 0.8 }}
                     viewport={{ once: false, amount: 0.3 }}
                     className="relative h-[400px] rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white group"
                 >

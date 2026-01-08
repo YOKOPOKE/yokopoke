@@ -24,13 +24,13 @@ export default function Hero() {
             <div className="max-w-7xl mx-auto w-full flex flex-col lg:grid lg:grid-cols-12 gap-8 lg:gap-16 items-center relative z-10 pt-10 lg:pt-0">
 
                 {/* Text Content */}
-                <div className="w-full lg:col-span-6 flex flex-col justify-center items-center lg:items-start text-center lg:text-left order-1">
+                <div className="w-full lg:col-span-6 flex flex-col justify-center items-center lg:items-start text-center lg:text-left order-1 will-change-transform">
 
                     <motion.span
                         initial={{ opacity: 0, y: 20 }}
                         whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: false }}
-                        transition={{ delay: 0.2 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: 0.2, duration: 0.5 }}
                         className="inline-block py-1 px-3 rounded-full bg-orange-100 text-yoko-accent text-xs font-bold uppercase tracking-widest mb-4 w-fit"
                     >
                         📍 Comitán, Chiapas

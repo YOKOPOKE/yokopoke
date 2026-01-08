@@ -38,7 +38,7 @@ export function TiltCard({ children, className = "", href, onClick }: TiltCardPr
             style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
-            className={`relative h-full transition-all duration-200 ease-out ${className}`}
+            className={`relative h-full transition-all duration-200 ease-out will-change-transform ${className}`}
         >
             <div style={{ transform: "translateZ(50px)" }} className="absolute inset-4 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-white/10 blur-2xl rounded-full pointer-events-none" />
             {children}

@@ -60,8 +60,8 @@ export default function Navbar() {
     return (
         <>
             <nav
-                className={`fixed w-full z-50 transition-all duration-300 ${isScrolled
-                    ? "bg-white/95 backdrop-blur-md shadow-sm h-20"
+                className={`fixed w-full z-50 transition-all duration-500 ease-in-out will-change-auto ${isScrolled
+                    ? "bg-white/80 backdrop-blur-xl shadow-lg shadow-black/5 h-20 border-b border-white/20"
                     : "bg-transparent h-24"
                     }`}
             >
@@ -182,11 +182,11 @@ export default function Navbar() {
             <AnimatePresence>
                 {isMobileMenuOpen && (
                     <motion.div
-                        initial={{ opacity: 0, clipPath: "circle(0px at calc(100% - 40px) 40px)" }}
-                        animate={{ opacity: 1, clipPath: "circle(150% at calc(100% - 40px) 40px)" }}
-                        exit={{ opacity: 0, clipPath: "circle(0px at calc(100% - 40px) 40px)" }}
-                        transition={{ duration: 0.5, type: "spring", damping: 20 }}
-                        className="fixed inset-0 z-40 bg-yoko-dark flex flex-col items-center justify-center space-y-8 lg:hidden"
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3, ease: "easeOut" }}
+                        className="fixed inset-0 z-40 bg-yoko-dark flex flex-col items-center justify-center space-y-8 lg:hidden will-change-transform"
                     >
                         {['Inicio', 'Menú', 'Ubicación'].map((item) => (
                             <a

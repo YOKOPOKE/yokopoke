@@ -1,10 +1,19 @@
+"use client";
+
 import { Facebook, Instagram, MapPin, Phone, Mail, Heart } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function Footer() {
     return (
         <footer className="bg-yoko-dark text-white pt-16 pb-8 relative overflow-hidden" id="footer">
             <div className="absolute inset-0 bg-noise opacity-10"></div>
-            <div className="max-w-7xl mx-auto px-4 relative z-10">
+            <motion.div
+                initial={{ opacity: 0, y: 50 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8 }}
+                className="max-w-7xl mx-auto px-4 relative z-10 will-change-transform"
+            >
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
                     {/* Brand */}
                     <div>
@@ -85,7 +94,7 @@ export default function Footer() {
                         Diseñado con <Heart size={12} className="text-red-500 fill-current animate-pulse" /> en Comitán
                     </p>
                 </div>
-            </div>
+            </motion.div>
         </footer>
     );
 }

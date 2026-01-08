@@ -45,6 +45,8 @@ import { CartProvider } from "@/context/CartContext";
 
 import ToastContainer from "@/components/ui/Toast";
 
+import SplashScreen from "@/components/SplashScreen";
+
 export default function RootLayout({
   children,
 }: Readonly<{
