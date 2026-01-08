@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { CheckCircle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
-export default function ReturnPage() {
+function ReturnContent() {
     const searchParams = useSearchParams();
     const sessionId = searchParams.get('session_id');
     const orderId = searchParams.get('orderId');
@@ -13,11 +13,7 @@ export default function ReturnPage() {
 
     useEffect(() => {
         if (sessionId) {
-            // Optional: Fetch session status from API if needed, 
-            // but for now we assume success if they land here from the embedded flow usually.
             setStatus('success');
-            // Clear cart? Ideally handled by context, but difficult from a redirect page without global state persistence or local storage check.
-            // For now, we rely on the user manually clearing or the webhook confirming backend state.
             localStorage.removeItem('cart');
         }
     }, [sessionId]);
@@ -43,5 +39,17 @@ export default function ReturnPage() {
         );
     }
 
-    return null;
+    return (
+        <div className="min-h-screen flex items-center justify-center">
+            <p className="text-gray-400">Procesando...</p>
+        </div>
+    );
+}
+
+export default function ReturnPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Cargando...</div>}>
+            <ReturnContent />
+        </Suspense>
+    );
 }
