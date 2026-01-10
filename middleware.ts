@@ -69,6 +69,8 @@ export async function middleware(request: NextRequest) {
             }
         )
 
+        /* 
+        // DISABLED due to client-side localStorage usage (supabase-js vs ssr)
         const { data: { user }, error: authError } = await supabase.auth.getUser()
 
         // Debug logging
@@ -80,10 +82,11 @@ export async function middleware(request: NextRequest) {
 
         if (!user && request.nextUrl.pathname.startsWith('/admin')) {
             console.log('Middleware: Redirecting to login due to missing user.');
-            const redirectUrl = request.nextUrl.clone()
-            redirectUrl.pathname = '/admin/login'
-            return NextResponse.redirect(redirectUrl)
+             const redirectUrl = request.nextUrl.clone()
+             redirectUrl.pathname = '/admin/login'
+             return NextResponse.redirect(redirectUrl)
         }
+        */
 
         return response
     } catch (e) {

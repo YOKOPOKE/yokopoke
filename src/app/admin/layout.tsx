@@ -12,11 +12,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const router = useRouter();
     const pathname = usePathname();
     const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const supabase = createClient();
+
+    useEffect(() => {
+        const checkAuth = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session && pathname !== '/admin/login') {
+                router.replace('/admin/login');
+            }
+            setIsLoading(false);
+        };
+        checkAuth();
+    }, [pathname, router]);
 
     // Bypass layout for Login page
     if (pathname === '/admin/login') {
         return <>{children}</>;
+    }
+
+    if (isLoading) {
+        return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-yoko-primary font-bold">Cargando Admin...</div>;
     }
 
     return (
