@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase-browser';
-import { CheckCircle, RefreshCw, User, ShoppingBag, MapPin, ChefHat, Flame, Timer, BarChart3 } from 'lucide-react';
+import { CheckCircle, RefreshCw, User, ShoppingBag, MapPin, ChefHat, Flame, Timer, BarChart3, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/context/ToastContext';
 
@@ -47,23 +47,48 @@ export default function AdminOrdersPage() {
     const [activeTab, setActiveTab] = useState<'pending' | 'preparing' | 'completed'>('pending');
     const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
 
+    // Date Filter State
+    const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'all' | 'custom'>('today');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+
     // NOTE: Audio and IncomingOrderModal are now handled globally in AdminContext/Layout
     // We only manage the list view here.
 
     const fetchOrders = async () => {
         setLoading(true);
-        // Fetch orders, but exclude those stuck in 'awaiting_payment' (abandoned checkout)
-        const { data } = await supabase.from('orders')
+
+        let query = supabase.from('orders')
             .select('*')
             .neq('status', 'awaiting_payment')
-            .order('created_at', { ascending: false })
-            .limit(50);
+            .order('created_at', { ascending: false });
+
+        // Apply date filter
+        if (dateFilter === 'today') {
+            const now = new Date();
+            const todayStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T00:00:00`;
+            const todayEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T23:59:59`;
+            query = query.gte('created_at', todayStart).lte('created_at', todayEnd);
+        } else if (dateFilter === 'week') {
+            const now = new Date();
+            const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+            const weekStartStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}T00:00:00`;
+            query = query.gte('created_at', weekStartStr);
+        } else if (dateFilter === 'custom' && startDate && endDate) {
+            query = query.gte('created_at', `${startDate}T00:00:00`).lte('created_at', `${endDate}T23:59:59`);
+        }
+        // 'all' doesn't add any date filter
+
+        const { data } = await query;
         if (data) setOrders(data as Order[]);
         setLoading(false);
     };
 
     useEffect(() => {
         fetchOrders();
+    }, [dateFilter, startDate, endDate]); // Re-fetch when date filter changes
+
+    useEffect(() => {
         const channel = supabase
             .channel('kitchen-ultra-v3')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload: any) => {
@@ -119,10 +144,21 @@ export default function AdminOrdersPage() {
     const pendingCount = orders.filter(o => o.status === 'pending').length;
     const preparingCount = orders.filter(o => o.status === 'preparing').length;
     const completedCount = orders.filter(o => o.status === 'completed').length;
-    const totalRevenue = orders.reduce((acc, curr) => acc + (curr.status !== 'cancelled' ? curr.total : 0), 0);
 
-    // Mock Data for Mini Chart (Last 5 orders amount)
-    const recentSales = orders.slice(0, 7).map(o => o.total).reverse();
+    // Filter orders for TODAY only (using local timezone)
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    const todaysOrders = orders.filter(o => {
+        const orderDate = new Date(o.created_at);
+        return orderDate >= todayStart && orderDate <= todayEnd;
+    });
+
+    const totalRevenue = todaysOrders.reduce((acc, curr) => acc + (curr.status !== 'cancelled' ? curr.total : 0), 0);
+
+    // Mock Data for Mini Chart (Last 5 orders amount from TODAY)
+    const recentSales = todaysOrders.slice(0, 7).map(o => o.total).reverse();
     const maxSale = Math.max(...recentSales, 100);
 
     const tabs = [
@@ -191,6 +227,79 @@ export default function AdminOrdersPage() {
                             </div>
                         </div>
 
+                        {/* Date Filter Controls - Premium Responsive */}
+                        <div className="hidden lg:flex items-center gap-2 relative">
+                            <div className="bg-gradient-to-br from-white/80 to-white/60 backdrop-blur-xl rounded-2xl border border-white/50 shadow-lg shadow-slate-200/50 p-1.5 flex items-center gap-1.5">
+                                <button
+                                    onClick={() => setDateFilter('today')}
+                                    className={`group px-4 py-2 rounded-xl text-xs font-black transition-all duration-300 ${dateFilter === 'today' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/40 scale-105' : 'text-slate-600 hover:bg-white/80 hover:text-violet-600 hover:scale-105'}`}
+                                >
+                                    <span className="flex items-center gap-1.5">
+                                        ⚡ Hoy
+                                    </span>
+                                </button>
+                                <button
+                                    onClick={() => setDateFilter('week')}
+                                    className={`group px-4 py-2 rounded-xl text-xs font-black transition-all duration-300 ${dateFilter === 'week' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/40 scale-105' : 'text-slate-600 hover:bg-white/80 hover:text-violet-600 hover:scale-105'}`}
+                                >
+                                    <span className="flex items-center gap-1.5">
+                                        📊 Semana
+                                    </span>
+                                </button>
+                                <button
+                                    onClick={() => setDateFilter('all')}
+                                    className={`group px-4 py-2 rounded-xl text-xs font-black transition-all duration-300 ${dateFilter === 'all' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/40 scale-105' : 'text-slate-600 hover:bg-white/80 hover:text-violet-600 hover:scale-105'}`}
+                                >
+                                    <span className="flex items-center gap-1.5">
+                                        ∞ Todo
+                                    </span>
+                                </button>
+                                <button
+                                    onClick={() => setDateFilter('custom')}
+                                    className={`group px-4 py-2 rounded-xl text-xs font-black transition-all duration-300 ${dateFilter === 'custom' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/40 scale-105' : 'text-slate-600 hover:bg-white/80 hover:text-violet-600 hover:scale-105'}`}
+                                >
+                                    <span className="flex items-center gap-1.5">
+                                        📅 FECHA
+                                    </span>
+                                </button>
+                            </div>
+
+                            {/* Custom Date Inputs - Absolute positioned dropdown */}
+                            <AnimatePresence>
+                                {dateFilter === 'custom' && (
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.9, y: -10 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                        className="absolute top-full mt-2 right-0 z-50"
+                                    >
+                                        <div className="bg-white/95 backdrop-blur-xl rounded-2xl border-2 border-violet-300/60 shadow-2xl shadow-violet-200/40 p-3 flex items-center gap-3">
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wide">Desde</span>
+                                                <input
+                                                    type="date"
+                                                    value={startDate}
+                                                    onChange={(e) => setStartDate(e.target.value)}
+                                                    className="w-[140px] px-3 py-2 rounded-xl border-2 border-violet-200 text-xs font-bold text-slate-700 bg-white focus:border-violet-400 focus:outline-none transition-all"
+                                                />
+                                            </div>
+                                            <span className="text-violet-400 text-lg font-black pt-4">→</span>
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wide">Hasta</span>
+                                                <input
+                                                    type="date"
+                                                    value={endDate}
+                                                    onChange={(e) => setEndDate(e.target.value)}
+                                                    className="w-[140px] px-3 py-2 rounded-xl border-2 border-violet-200 text-xs font-bold text-slate-700 bg-white focus:border-violet-400 focus:outline-none transition-all"
+                                                />
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
                         {/* Right: Actions */}
                         <div className="flex items-center gap-2">
                             <div className="hidden md:flex bg-slate-100 p-1 rounded-full mr-2">
@@ -212,6 +321,65 @@ export default function AdminOrdersPage() {
                         <div className="bg-white/50 rounded-xl p-3 border border-slate-100 flex items-center justify-between">
                             <span className="text-xs font-bold text-slate-500">Pedidos</span>
                             <span className="text-sm font-black text-slate-800">{orders.length}</span>
+                        </div>
+                    </div>
+
+                    {/* Mobile Date Filter */}
+                    <div className="lg:hidden mt-3 px-4">
+                        <div className="bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl border border-white/60 shadow-lg p-2">
+                            <div className="grid grid-cols-4 gap-1.5 mb-2">
+                                <button
+                                    onClick={() => setDateFilter('today')}
+                                    className={`py-2.5 rounded-xl text-[10px] font-black transition-all duration-300 ${dateFilter === 'today' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-md' : 'bg-slate-50 text-slate-600'}`}
+                                >
+                                    ⚡ Hoy
+                                </button>
+                                <button
+                                    onClick={() => setDateFilter('week')}
+                                    className={`py-2.5 rounded-xl text-[10px] font-black transition-all duration-300 ${dateFilter === 'week' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-md' : 'bg-slate-50 text-slate-600'}`}
+                                >
+                                    📊 7d
+                                </button>
+                                <button
+                                    onClick={() => setDateFilter('all')}
+                                    className={`py-2.5 rounded-xl text-[10px] font-black transition-all duration-300 ${dateFilter === 'all' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-md' : 'bg-slate-50 text-slate-600'}`}
+                                >
+                                    ∞ Todo
+                                </button>
+                                <button
+                                    onClick={() => setDateFilter('custom')}
+                                    className={`py-2.5 rounded-xl text-[10px] font-black transition-all duration-300 ${dateFilter === 'custom' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-md' : 'bg-slate-50 text-slate-600'}`}
+                                >
+                                    📅
+                                </button>
+                            </div>
+
+                            {/* Mobile Custom Date Inputs */}
+                            <AnimatePresence>
+                                {dateFilter === 'custom' && (
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="overflow-hidden"
+                                    >
+                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                                            <input
+                                                type="date"
+                                                value={startDate}
+                                                onChange={(e) => setStartDate(e.target.value)}
+                                                className="px-2 py-2 rounded-xl border-2 border-violet-200 text-[10px] font-bold text-slate-700 bg-white focus:border-violet-400 focus:outline-none"
+                                            />
+                                            <input
+                                                type="date"
+                                                value={endDate}
+                                                onChange={(e) => setEndDate(e.target.value)}
+                                                className="px-2 py-2 rounded-xl border-2 border-violet-200 text-[10px] font-bold text-slate-700 bg-white focus:border-violet-400 focus:outline-none"
+                                            />
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
                     </div>
                 </div>
@@ -469,6 +637,7 @@ const CompactOrderCard = ({ order, mobile }: { order: Order, mobile?: boolean })
 
 const OrderCardUltra = ({ order, updateStatus }: { order: Order, updateStatus: any }) => {
     const elapsed = useElapsedMinutes(order.created_at);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     // Status Logic
     const isPending = order.status === 'pending';
@@ -476,108 +645,247 @@ const OrderCardUltra = ({ order, updateStatus }: { order: Order, updateStatus: a
 
     // Timer Style
     let timerStyle = 'text-slate-400 bg-slate-50 border-slate-100';
+    let timerGlow = '';
     if (isPending) {
-        if (elapsed > 10) timerStyle = 'text-white bg-red-500 border-red-500 animate-pulse shadow-red-200';
-        else if (elapsed > 5) timerStyle = 'text-white bg-amber-500 border-amber-500';
+        if (elapsed > 10) {
+            timerStyle = 'text-white bg-gradient-to-r from-red-500 to-rose-600 border-red-400 shadow-lg shadow-red-500/50';
+            timerGlow = 'animate-pulse';
+        } else if (elapsed > 5) {
+            timerStyle = 'text-white bg-gradient-to-r from-amber-500 to-orange-500 border-amber-400 shadow-md shadow-amber-500/30';
+        }
     }
 
     return (
         <motion.div
             layout
-            initial={{ opacity: 0, scale: 0.9, y: 30 }}
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9 }}
+            exit={{ opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            className="group relative bg-white rounded-[1.5rem] p-5 shadow-sm border border-slate-100 hover:shadow-xl hover:shadow-slate-200/50 hover:-translate-y-1 transition-all duration-300"
+            className="group relative bg-gradient-to-br from-white via-white to-slate-50/30 rounded-2xl shadow-md border border-slate-200/60 hover:shadow-xl hover:shadow-slate-300/30 transition-all duration-300 overflow-hidden"
         >
-            {/* Glow Effect on Hover */}
-            <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-[1.5rem] pointer-events-none bg-gradient-to-tr from-transparent via-transparent to-${isPending ? 'amber' : isPreparing ? 'blue' : 'green'}-500/5`} />
+            {/* Ambient Glow Effect */}
+            <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl pointer-events-none bg-gradient-to-tr ${isPending ? 'from-amber-500/5 via-orange-500/3 to-transparent' : isPreparing ? 'from-blue-500/5 via-indigo-500/3 to-transparent' : 'from-green-500/5 via-emerald-500/3 to-transparent'}`} />
 
-            <div className="flex justify-between items-start mb-5 relative z-10">
-                <div className="flex flex-col">
-                    <span className="font-mono text-[10px] text-slate-400 font-bold tracking-wider mb-1">ID #{order.id}</span>
-                    <span className="text-xl font-black text-slate-800 leading-none">{order.customer_name}</span>
-                </div>
-                <div className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-sm ${timerStyle}`}>
-                    <Timer size={12} /> {elapsed}m
-                </div>
-            </div>
+            {/* Urgent Order Alert Glow */}
+            {elapsed > 10 && isPending && (
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-red-500/20 via-orange-500/20 to-red-500/20 rounded-2xl blur-lg animate-pulse -z-10" />
+            )}
 
-            {/* Payment Badge */}
-            <div className="mb-2">
-                {(order.payment_method === 'card') && (
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${order.payment_status === 'paid'
-                        ? 'bg-violet-100 text-violet-700 border-violet-200'
-                        : 'bg-slate-100 text-slate-500 border-slate-200'
-                        }`}>
-                        {order.payment_status === 'paid' ? '💳 PAGADO (Stripe)' : '⏳ PAGO PENDIENTE'}
-                    </span>
-                )}
-                {(order.payment_method !== 'card') && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-green-100 text-green-700 border-green-200">
-                        💵 EFECTIVO / TRANSFER
-                    </span>
-                )}
-            </div>
+            {/* Compact Header - Always Visible */}
+            <div
+                className="p-4 cursor-pointer relative z-10"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <div className="flex items-center justify-between gap-3">
+                    {/* Left: Order Info */}
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="flex-shrink-0">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isPending ? 'bg-amber-100' : isPreparing ? 'bg-blue-100' : 'bg-green-100'}`}>
+                                {order.delivery_method === 'pickup' ? (
+                                    <ShoppingBag size={20} className={isPending ? 'text-amber-600' : isPreparing ? 'text-blue-600' : 'text-green-600'} />
+                                ) : (
+                                    <MapPin size={20} className={isPending ? 'text-amber-600' : isPreparing ? 'text-blue-600' : 'text-green-600'} />
+                                )}
+                            </div>
+                        </div>
 
-            {/* Content Items */}
-            <div className="space-y-3 mb-6 relative z-10 pl-1">
-                {order.items.map((item: any, i) => (
-                    <div key={i} className="flex items-start gap-3 text-sm group/item">
-                        <div className="w-5 h-5 rounded-md bg-slate-50 border border-slate-100 flex items-center justify-center text-[10px] font-bold shrink-0 text-slate-400 group-hover/item:text-slate-600 group-hover/item:border-slate-300 transition-colors">1</div>
-                        <div className="leading-tight">
-                            <p className="font-bold text-slate-700">{item.name || (item.productType === 'bowl' ? 'Poke Bowl' : 'Sushi Burger')}</p>
-                            <p className="text-[11px] text-slate-400 font-medium mt-0.5 line-clamp-1">
-                                {[item.base?.name, ...(item.proteins || []), ...(item.mixins || [])].map((x: any) => x?.name).filter(Boolean).join(', ')}
-                            </p>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-black text-lg text-slate-800 truncate">{order.customer_name}</h3>
+                                <span className="text-xs font-mono text-slate-400">#{order.id}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <span className="font-semibold">{order.items.length} {order.items.length === 1 ? 'item' : 'items'}</span>
+                                <span>•</span>
+                                <span className="font-mono font-bold text-slate-700">${order.total}</span>
+                                <span>•</span>
+                                <span>{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
                         </div>
                     </div>
-                ))}
+
+                    {/* Right: Timer & Actions */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 ${timerStyle} ${timerGlow}`}>
+                            <Timer size={12} />
+                            <span className="tabular-nums">{elapsed}m</span>
+                        </div>
+
+                        <motion.div
+                            animate={{ rotate: isExpanded ? 180 : 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="text-slate-400"
+                        >
+                            <ChevronDown size={20} />
+                        </motion.div>
+                    </div>
+                </div>
             </div>
 
-            {/* Footer Actions */}
-            <div className="flex items-end justify-between border-t border-slate-50 pt-4 mt-2 relative z-10">
-                <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-0.5">Total</span>
-                    <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">${order.total}</span>
-                </div>
+            {/* Expandable Details */}
+            <AnimatePresence>
+                {isExpanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                        className="overflow-hidden"
+                    >
+                        <div className="px-4 pb-4 pt-0 border-t border-slate-100 bg-slate-50/50">
+                            {/* Payment Info */}
+                            {order.payment_method && (
+                                <div className="mt-3 mb-3">
+                                    <span className={`text-xs font-bold px-3 py-1.5 rounded-lg border inline-flex items-center gap-1.5 ${order.payment_method === 'card' && order.payment_status === 'paid' ? 'bg-violet-100 text-violet-700 border-violet-200' : 'bg-green-100 text-green-700 border-green-200'}`}>
+                                        {order.payment_method === 'card' ? '💳 PAGADO (Stripe)' : '💵 EFECTIVO / TRANSFER'}
+                                    </span>
+                                </div>
+                            )}
 
-                <div className="flex gap-2">
-                    {isPending && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'preparing'); }}
-                            className="bg-gradient-to-r from-slate-900 to-slate-800 text-white pl-4 pr-5 py-3 rounded-2xl text-xs font-bold shadow-lg shadow-slate-900/20 hover:shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group/btn"
-                        >
-                            <div className="relative">
-                                <div className="absolute inset-0 bg-rose-500 blur-sm opacity-50 animate-pulse" />
-                                <Flame size={14} className="text-rose-500 relative z-10" />
+                            {/* Order Items - Detailed */}
+                            <div className="space-y-3 mb-4">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Detalles del Pedido</h4>
+                                {order.items.map((item: any, i) => (
+                                    <div key={i} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-sm flex-shrink-0">
+                                                {i + 1}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h5 className="font-black text-slate-800 mb-2">
+                                                    {item.name || (item.productType === 'bowl' ? '🍱 Poke Bowl' : '🍔 Sushi Burger')}
+                                                </h5>
+
+                                                {/* Base */}
+                                                {item.base && (
+                                                    <div className="mb-2">
+                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Base:</span>
+                                                        <p className="text-sm text-slate-700 font-semibold mt-0.5">{item.base.name}</p>
+                                                    </div>
+                                                )}
+
+                                                {/* Proteins */}
+                                                {item.proteins && item.proteins.length > 0 && (
+                                                    <div className="mb-2">
+                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Proteínas:</span>
+                                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                                            {item.proteins.map((p: any, idx: number) => (
+                                                                <span key={idx} className="text-xs bg-rose-100 text-rose-700 px-2 py-1 rounded-lg font-bold border border-rose-200">
+                                                                    {p.name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Mixins */}
+                                                {item.mixins && item.mixins.length > 0 && (
+                                                    <div className="mb-2">
+                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Mix-ins:</span>
+                                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                                            {item.mixins.map((m: any, idx: number) => (
+                                                                <span key={idx} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg font-bold border border-green-200">
+                                                                    {m.name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Toppings */}
+                                                {item.toppings && item.toppings.length > 0 && (
+                                                    <div className="mb-2">
+                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Toppings:</span>
+                                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                                            {item.toppings.map((t: any, idx: number) => (
+                                                                <span key={idx} className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-lg font-bold border border-amber-200">
+                                                                    {t.name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Sauce */}
+                                                {item.sauce && (
+                                                    <div className="mb-2">
+                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Salsa:</span>
+                                                        <p className="text-sm text-slate-700 font-semibold mt-0.5">{item.sauce.name}</p>
+                                                    </div>
+                                                )}
+
+                                                {/* Extras */}
+                                                {item.extras && item.extras.length > 0 && (
+                                                    <div>
+                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Extras:</span>
+                                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                                            {item.extras.map((e: any, idx: number) => (
+                                                                <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-lg font-bold border border-purple-200">
+                                                                    {e.name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                            COCINAR
-                        </button>
-                    )}
-                    {isPreparing && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'completed'); }}
-                            className="bg-gradient-to-r from-indigo-500 to-blue-600 text-white px-5 py-3 rounded-2xl text-xs font-bold shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-                        >
-                            <CheckCircle size={16} /> Listo
-                        </button>
-                    )}
-                </div>
-            </div>
 
-            {/* Ribbon/Tag for Delivery Method */}
-            <div className="absolute -right-3 -top-3">
-                {order.delivery_method === 'pickup' ? (
-                    <div className="bg-white text-orange-600 shadow-sm border border-orange-100 p-2 rounded-full">
-                        <ShoppingBag size={14} strokeWidth={3} />
-                    </div>
-                ) : (
-                    <div className="bg-white text-indigo-600 shadow-sm border border-indigo-100 p-2 rounded-full">
-                        <MapPin size={14} strokeWidth={3} />
-                    </div>
+                            {/* Customer Info */}
+                            {(order.phone || order.address) && (
+                                <div className="mb-4 p-3 bg-white rounded-xl border border-slate-200">
+                                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Información de Contacto</h4>
+                                    {order.phone && (
+                                        <p className="text-sm text-slate-700 mb-1">
+                                            <span className="font-bold">Tel:</span> {order.phone}
+                                        </p>
+                                    )}
+                                    {order.address && order.delivery_method === 'delivery' && (
+                                        <p className="text-sm text-slate-700">
+                                            <span className="font-bold">Dirección:</span> {order.address}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-0.5">Total</span>
+                                    <span className="text-2xl font-black text-slate-900 font-mono">${order.total}</span>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    {isPending && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'preparing'); }}
+                                            className="relative bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white pl-4 pr-5 py-3 rounded-xl text-xs font-black shadow-xl shadow-slate-900/30 hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 flex items-center gap-2 overflow-hidden group/btn"
+                                        >
+                                            <div className="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-rose-500/20 to-orange-500/0 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500" />
+                                            <div className="relative flex items-center gap-2">
+                                                <Flame size={16} className="text-rose-400 drop-shadow-lg" />
+                                                <span className="relative z-10">COCINAR</span>
+                                            </div>
+                                        </button>
+                                    )}
+                                    {isPreparing && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'completed'); }}
+                                            className="bg-gradient-to-r from-indigo-500 via-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-xs font-black shadow-xl shadow-indigo-500/40 hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 flex items-center gap-2"
+                                        >
+                                            <CheckCircle size={16} className="drop-shadow-md" />
+                                            <span>Listo</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
                 )}
-            </div>
+            </AnimatePresence>
         </motion.div>
     );
 }

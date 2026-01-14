@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase-browser';
-import { Plus, Trash2, Edit2, Save, X, ChevronRight, ChevronDown, ChevronLeft, Move, Copy, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, ChevronRight, ChevronDown, ChevronLeft, Move, Copy, ArrowLeft, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/context/ToastContext';
 
@@ -55,6 +55,7 @@ export default function BuilderPage() {
     const [ingredients, setIngredients] = useState<Ingredient[]>([]);
 
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Initial Load
     useEffect(() => {
@@ -323,12 +324,16 @@ export default function BuilderPage() {
                                     <motion.button
                                         key={p.id}
                                         onClick={() => setSelectedProduct(p)}
-                                        whileHover={{ scale: 1.03, y: -4 }}
+                                        whileHover={{ scale: 1.04, y: -6 }}
                                         whileTap={{ scale: 0.98 }}
-                                        className="group relative bg-gradient-to-br from-white to-slate-50 p-6 rounded-2xl transition-all border-2 border-slate-100 hover:border-indigo-300 hover:shadow-xl text-left"
+                                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                        className="group relative bg-gradient-to-br from-white via-white to-indigo-50/30 p-6 rounded-[2.5rem] transition-all duration-500 border-2 border-indigo-200/40 hover:border-indigo-400/60 hover:shadow-2xl hover:shadow-indigo-200/30 text-left overflow-hidden"
                                     >
+                                        {/* Decorative ambient glow */}
+                                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/5 to-pink-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+
                                         {/* Decorative corner */}
-                                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-bl-full rounded-tr-2xl" />
+                                        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/15 to-purple-500/15 rounded-bl-full rounded-tr-[2.5rem] blur-sm" />
 
                                         {/* Content */}
                                         <div className="relative z-10">
@@ -399,18 +404,23 @@ export default function BuilderPage() {
                                             initial={{ opacity: 0, y: 20 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, scale: 0.95 }}
-                                            className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-md transition-all duration-300"
+                                            whileHover={{ y: -4, scale: 1.01 }}
+                                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                            className="bg-gradient-to-br from-white via-white to-slate-50/30 rounded-[2.5rem] shadow-lg border-2 border-slate-200/60 hover:shadow-2xl hover:shadow-indigo-200/30 hover:border-indigo-300/50 transition-all duration-500 overflow-hidden group backdrop-blur-sm"
                                         >
+                                            {/* Ambient gradient overlay */}
+                                            <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 bg-gradient-to-br ${expandedStep === step.id ? 'from-indigo-500/10 via-purple-500/5 to-transparent' : 'from-indigo-500/5 via-purple-500/3 to-transparent'} pointer-events-none`} />
+
                                             {/* --- Premium Step Header --- */}
                                             <div className="p-5 flex flex-col gap-4 relative">
-                                                {/* Left decorative bar */}
-                                                <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${expandedStep === step.id ? 'bg-indigo-500' : 'bg-slate-200 group-hover:bg-indigo-300'} transition-colors`} />
+                                                {/* Left decorative bar with gradient */}
+                                                <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-all duration-500 ${expandedStep === step.id ? 'bg-gradient-to-b from-indigo-500 via-purple-500 to-indigo-500 shadow-lg shadow-indigo-500/50' : 'bg-gradient-to-b from-slate-200 to-slate-300 group-hover:from-indigo-300 group-hover:to-purple-300'}`} />
 
                                                 <div className="flex items-start gap-4">
                                                     {/* Step Number & Reorder */}
                                                     <div className="flex-shrink-0 flex flex-col items-center gap-2">
-                                                        <div className="w-10 h-10 flex items-center justify-center bg-slate-900 text-white rounded-xl font-black text-lg shadow-lg shadow-slate-200 z-10 relative">
-                                                            {index + 1}
+                                                        <div className="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl font-black text-xl shadow-xl shadow-slate-900/30 z-10 relative group-hover:scale-110 transition-transform duration-300">
+                                                            <span className="drop-shadow-sm">{index + 1}</span>
                                                         </div>
                                                         <div className="flex flex-col gap-1">
                                                             <button
@@ -602,9 +612,9 @@ export default function BuilderPage() {
 
                                                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                                                                 {stepOptions[step.id]?.map(opt => (
-                                                                    <div key={opt.id} className="bg-white p-3 rounded-2xl border border-slate-200 flex items-center gap-3 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group relative overflow-hidden">
-                                                                        {/* Color Indicator */}
-                                                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-400 to-purple-400" />
+                                                                    <div key={opt.id} className="bg-white p-4 rounded-[1.5rem] border-2 border-slate-200/60 flex items-center gap-3 shadow-md hover:shadow-xl hover:shadow-indigo-200/30 hover:border-indigo-300/60 transition-all duration-300 group relative overflow-hidden hover:scale-[1.02]">
+                                                                        {/* Gradient indicator */}
+                                                                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-indigo-400 via-purple-500 to-pink-400 shadow-sm" />
 
                                                                         <div className="pl-2 flex-1 min-w-0">
                                                                             <input

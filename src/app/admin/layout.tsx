@@ -67,12 +67,14 @@ function AdminLayoutContent({ children, pathname, isMobileNavOpen, setIsMobileNa
         <div className="min-h-screen bg-gray-50 flex font-sans text-yoko-dark">
             <IncomingOrderModal />
             {/* Sidebar Desktop */}
-            <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 fixed h-full z-20 shadow-sm">
+            <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 fixed h-full z-20 shadow-lg">
                 <div className="p-6 border-b border-gray-50 flex items-center gap-3">
-                    <div className="w-10 h-10 bg-yoko-primary rounded-xl flex items-center justify-center text-white font-serif font-bold text-xl shadow-lg shadow-yoko-primary/30">Y</div>
+                    <div className="w-11 h-11 bg-gradient-to-br from-yoko-primary via-rose-500 to-orange-500 rounded-2xl flex items-center justify-center text-white font-serif font-black text-2xl shadow-xl shadow-yoko-primary/40">
+                        <span className="drop-shadow-md">Y</span>
+                    </div>
                     <div>
-                        <h1 className="font-bold text-yoko-dark text-lg tracking-wide">YOKO ADMIN</h1>
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wider">Panel de Control</p>
+                        <h1 className="font-black text-slate-900 text-lg tracking-wide">YOKO ADMIN</h1>
+                        <p className="text-[10px] text-slate-400 uppercase tracking-[0.15em] font-bold">Panel de Control</p>
                     </div>
                 </div>
 
@@ -88,19 +90,21 @@ function AdminLayoutContent({ children, pathname, isMobileNavOpen, setIsMobileNa
                             >
                                 <Link
                                     href={item.path}
-                                    className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${isActive ? 'text-white shadow-lg shadow-yoko-primary/30' : 'text-gray-500 hover:text-yoko-primary hover:bg-gray-50'}`}
+                                    className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all duration-300 relative overflow-hidden group ${isActive ? 'text-white shadow-xl shadow-yoko-primary/40' : 'text-slate-500 hover:text-yoko-primary hover:bg-gradient-to-r hover:from-rose-50 hover:to-orange-50'}`}
                                 >
                                     {isActive && (
                                         <motion.div
                                             layoutId="activeTab"
-                                            className="absolute inset-0 bg-yoko-primary z-0"
+                                            className="absolute inset-0 bg-gradient-to-r from-yoko-primary via-rose-500 to-orange-500 z-0"
                                             initial={false}
                                             transition={{ type: "spring", stiffness: 500, damping: 30 }}
                                         />
                                     )}
                                     <span className="relative z-10 flex items-center gap-3">
-                                        {item.icon}
-                                        {item.name}
+                                        <span className={`transition-transform duration-300 ${isActive ? 'scale-110 drop-shadow-md' : 'group-hover:scale-110'}`}>
+                                            {item.icon}
+                                        </span>
+                                        <span className="tracking-wide">{item.name}</span>
                                     </span>
                                 </Link>
                             </motion.div>
@@ -109,9 +113,9 @@ function AdminLayoutContent({ children, pathname, isMobileNavOpen, setIsMobileNa
                 </nav>
 
                 <div className="px-4 pb-2">
-                    <Link href="/" className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-gray-400 hover:text-yoko-primary hover:bg-gray-50 transition-colors group">
-                        <Store size={20} />
-                        Ir a Yoko Publico
+                    <Link href="/" className="flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-slate-400 hover:text-yoko-primary hover:bg-gradient-to-r hover:from-rose-50 hover:to-orange-50 transition-all duration-300 group">
+                        <Store size={20} className="group-hover:scale-110 transition-transform" />
+                        <span>Ir a Yoko Publico</span>
                     </Link>
                 </div>
 
@@ -121,10 +125,10 @@ function AdminLayoutContent({ children, pathname, isMobileNavOpen, setIsMobileNa
                             await supabase.auth.signOut();
                             router.push('/admin/login');
                         }}
-                        className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-red-400 hover:text-red-500 hover:bg-red-50 w-full transition-colors"
+                        className="flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-red-500 hover:text-red-600 hover:bg-red-50 w-full transition-all duration-300 group"
                     >
-                        <LogOut size={20} />
-                        Cerrar Sesión
+                        <LogOut size={20} className="group-hover:scale-110 transition-transform" />
+                        <span>Cerrar Sesión</span>
                     </button>
                 </div>
             </aside>

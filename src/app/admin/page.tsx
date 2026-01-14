@@ -74,21 +74,51 @@ export default function AdminHub() {
         setCurrentDate(date.toLocaleDateString('es-ES', options));
 
         const fetchStats = async () => {
-            const today = new Date().toISOString().split('T')[0];
-            const { data } = await supabase
+            // Get current date in local timezone
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+
+            // Create start and end timestamps for today in local timezone
+            const startOfToday = `${year}-${month}-${day}T00:00:00`;
+            const endOfToday = `${year}-${month}-${day}T23:59:59`;
+
+            console.log('🔍 Fetching orders from:', startOfToday, 'to:', endOfToday, '(Local Time)');
+
+            const { data, error } = await supabase
                 .from('orders')
-                .select('total, status')
-                .gte('created_at', today);
+                .select('total, status, created_at')
+                .gte('created_at', startOfToday)
+                .lte('created_at', endOfToday);
+
+            if (error) {
+                console.error('❌ Error fetching stats:', error);
+            }
 
             if (data) {
-                const revenue = data.reduce((acc: number, order: any) => acc + (order.status !== 'cancelled' ? order.total : 0), 0);
+                console.log('✅ Today\'s orders:', data.length, 'orders found');
+                console.log('📊 Orders:', data.map(o => ({ created: o.created_at, status: o.status, total: o.total })));
+                const revenue = data.reduce((acc: number, order: any) => acc + (order.status !== 'cancelled' && order.status !== 'awaiting_payment' ? order.total : 0), 0);
                 const pending = data.filter((o: any) => o.status === 'pending' || o.status === 'preparing').length;
                 const completed = data.filter((o: any) => o.status === 'completed').length;
+                console.log('💰 Revenue:', revenue, '| ⏳ Pending:', pending, '| ✓ Completed:', completed);
                 setStats({ revenue, pending, completed });
             }
             setLoading(false);
         };
         fetchStats();
+
+        // Auto-refresh every minute to update times and check for new day
+        const interval = setInterval(() => {
+            const now = new Date();
+            // If we've crossed into a new day, refresh stats
+            if (now.getHours() === 0 && now.getMinutes() === 0) {
+                fetchStats();
+            }
+        }, 60000); // Check every minute
+
+        return () => clearInterval(interval);
     }, []);
 
     const container = {

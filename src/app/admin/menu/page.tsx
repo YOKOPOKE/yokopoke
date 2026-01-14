@@ -336,29 +336,42 @@ export default function AdminMenuPage() {
                                             key={item.id}
                                             initial={{ opacity: 1, y: 0 }}
                                             animate={{ opacity: 1, y: 0 }}
-                                            className="bg-white p-6 rounded-[2rem] shadow-md border border-slate-200 hover:shadow-xl hover:border-violet-300 transition-all group relative min-h-[160px] flex flex-col justify-between"
+                                            whileHover={{ y: -8, scale: 1.02 }}
+                                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                            className="bg-gradient-to-br from-white via-white to-slate-50/40 p-6 rounded-[2.5rem] shadow-lg border-2 border-slate-200/60 hover:shadow-2xl hover:shadow-violet-200/30 hover:border-violet-300/50 transition-all duration-500 group relative min-h-[180px] flex flex-col justify-between backdrop-blur-sm overflow-hidden"
                                         >
-                                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                                <button onClick={() => openModal(item)} className="p-2 bg-slate-100 text-slate-600 rounded-full hover:bg-violet-100 hover:text-violet-600">
+                                            {/* Ambient gradient effect */}
+                                            <div className="absolute inset-0 bg-gradient-to-br from-violet-500/0 via-purple-500/5 to-pink-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+
+                                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 z-10 transform translate-y-2 group-hover:translate-y-0">
+                                                <button onClick={() => openModal(item)} className="p-2.5 bg-white/80 backdrop-blur-md text-violet-600 rounded-2xl hover:bg-violet-100 hover:scale-110 active:scale-95 transition-all shadow-lg shadow-violet-200/40 border border-violet-200/30">
                                                     <Edit2 size={16} />
                                                 </button>
-                                                <button onClick={() => handleDelete(item.id)} className="p-2 bg-slate-100 text-slate-600 rounded-full hover:bg-red-100 hover:text-red-500">
+                                                <button onClick={() => handleDelete(item.id)} className="p-2.5 bg-white/80 backdrop-blur-md text-red-500 rounded-2xl hover:bg-red-100 hover:scale-110 active:scale-95 transition-all shadow-lg shadow-red-200/40 border border-red-200/30">
                                                     <Trash2 size={16} />
                                                 </button>
                                             </div>
 
-                                            <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-slate-50 flex items-center justify-center text-4xl overflow-hidden shadow-sm border border-slate-100 relative">
+                                            <div className="w-28 h-28 mx-auto mb-5 rounded-3xl bg-gradient-to-br from-slate-100 to-white flex items-center justify-center text-5xl overflow-hidden shadow-xl shadow-slate-200/50 border-2 border-white relative group-hover:scale-105 transition-transform duration-500">
                                                 {item.image_url ? (
                                                     <img src={item.image_url} alt="" className="w-full h-full object-cover" />
                                                 ) : (
-                                                    <span>🍱</span>
+                                                    <span className="drop-shadow-md">🍱</span>
                                                 )}
+                                                <div className="absolute inset-0 bg-gradient-to-t from-violet-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                                             </div>
 
-                                            <h3 className="text-xl font-bold text-slate-800 mb-1">{item.name}</h3>
-                                            <p className="font-mono text-slate-400 text-sm mb-4">
-                                                ${item.price}
-                                            </p>
+                                            <div className="relative z-10">
+                                                <h3 className="text-xl font-black text-slate-800 mb-2 leading-tight group-hover:text-violet-700 transition-colors duration-300">{item.name}</h3>
+                                                <div className="flex items-center justify-between">
+                                                    <p className="font-mono text-slate-500 text-base font-black">
+                                                        ${item.price}
+                                                    </p>
+                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-lg shadow-violet-500/40 scale-75 group-hover:scale-100">
+                                                        <Edit2 size={14} className="text-white" />
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </motion.div>
                                     ))}
                                 </div>
@@ -426,63 +439,79 @@ export default function AdminMenuPage() {
             </AnimatePresence>
 
             {/* EDIT MODAL */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm">
-                    <div className="bg-white rounded-[2rem] p-8 w-full max-w-lg shadow-2xl">
-                        <h2 className="text-2xl font-black text-slate-900 mb-6">
-                            {editingItem ? 'Editar Item' : 'Nuevo Item'}
-                        </h2>
-                        <form onSubmit={handleSave} className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 mb-1">Nombre</label>
-                                <input className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 outline-none" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
+            <AnimatePresence>
+                {isModalOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md"
+                        onClick={() => setIsModalOpen(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                            animate={{ scale: 1, y: 0, opacity: 1 }}
+                            exit={{ scale: 0.95, y: 10, opacity: 0 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                            className="bg-white rounded-[2.5rem] p-8 w-full max-w-lg shadow-2xl border border-slate-200/60"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <h2 className="text-3xl font-black text-slate-900 mb-6 bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+                                {editingItem ? '✨ Editar Item' : '🎨 Nuevo Item'}
+                            </h2>
+                            <form onSubmit={handleSave} className="space-y-5">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-400 mb-1">Precio</label>
-                                    <input type="number" className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 outline-none" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} required />
+                                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Nombre</label>
+                                    <input className="w-full bg-slate-50/80 border-2 border-slate-200 p-4 rounded-2xl font-bold text-slate-700 outline-none focus:border-violet-400 focus:bg-white transition-all" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Precio</label>
+                                        <input type="number" className="w-full bg-slate-50/80 border-2 border-slate-200 p-4 rounded-2xl font-bold text-slate-700 outline-none focus:border-violet-400 focus:bg-white transition-all" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} required />
+                                    </div>
+
+                                    {selectedTab === 'products' ? (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Categoría</label>
+                                            <select
+                                                className="w-full bg-slate-50/80 border-2 border-slate-200 p-4 rounded-2xl font-bold text-slate-700 outline-none focus:border-violet-400 focus:bg-white transition-all"
+                                                value={formData.categoryId}
+                                                onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+                                                required
+                                            >
+                                                <option value="" disabled>Seleccionar...</option>
+                                                {categories.map(cat => (
+                                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Tipo</label>
+                                            <input className="w-full bg-slate-50/80 border-2 border-slate-200 p-4 rounded-2xl font-bold text-slate-700 outline-none focus:border-violet-400 focus:bg-white transition-all" value={formData.categoryType} onChange={e => setFormData({ ...formData, categoryType: e.target.value })} required />
+                                        </div>
+                                    )}
                                 </div>
 
-                                {selectedTab === 'products' ? (
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 mb-1">Categoría</label>
-                                        <select
-                                            className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 outline-none"
-                                            value={formData.categoryId}
-                                            onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-                                            required
-                                        >
-                                            <option value="" disabled>Seleccionar...</option>
-                                            {categories.map(cat => (
-                                                <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 mb-1">Tipo</label>
-                                        <input className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 outline-none" value={formData.categoryType} onChange={e => setFormData({ ...formData, categoryType: e.target.value })} required />
-                                    </div>
-                                )}
-                            </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Imagen</label>
+                                    <ImageUpload
+                                        value={formData.imageUrl}
+                                        onChange={(url) => setFormData({ ...formData, imageUrl: url })}
+                                        folder="items"
+                                    />
+                                </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 mb-2">Imagen</label>
-                                <ImageUpload
-                                    value={formData.imageUrl}
-                                    onChange={(url) => setFormData({ ...formData, imageUrl: url })}
-                                    folder="items"
-                                />
-                            </div>
-
-                            <div className="flex justify-end gap-3 mt-8">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100">Cancelar</button>
-                                <button type="submit" className="px-6 py-3 rounded-xl font-bold bg-violet-600 text-white hover:bg-violet-700">Guardar</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+                                <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-slate-100">
+                                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3.5 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-all active:scale-95">Cancelar</button>
+                                    <button type="submit" className="px-8 py-3.5 rounded-2xl font-black bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:from-violet-700 hover:to-purple-700 shadow-xl shadow-violet-500/30 hover:shadow-2xl hover:shadow-violet-500/40 transition-all active:scale-95">Guardar ✨</button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
