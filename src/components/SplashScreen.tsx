@@ -12,45 +12,35 @@ export default function SplashScreen() {
         const timer = setTimeout(() => {
             setIsVisible(false);
             setTimeout(() => setComplete(true), 1200);
-        }, 3800);
+        }, 4500);
 
         return () => clearTimeout(timer);
     }, [setComplete]);
 
     const containerVariants: any = {
         exit: {
-            scale: 2,
             opacity: 0,
-            transition: {
-                duration: 1,
-                ease: [0.7, 0, 0.3, 1],
-            }
+            scale: 1.05,
+            transition: { duration: 0.8, ease: "easeInOut" }
         }
     };
 
-    const orbitVariants: any = {
-        animate: (i: number) => ({
-            rotate: 360,
-            transition: {
-                duration: 10 + i * 5,
-                repeat: Infinity,
-                ease: "linear"
-            }
-        })
-    };
-
     const logoVariants: any = {
-        initial: { scale: 0.1, opacity: 0, rotate: -180 },
+        initial: { scale: 0.5, opacity: 0, rotate: -180 },
         animate: {
             scale: 1,
             opacity: 1,
             rotate: 0,
             transition: {
-                duration: 2,
-                ease: [0.34, 1.56, 0.64, 1]
+                type: "spring",
+                stiffness: 80,
+                damping: 20,
+                delay: 0.3
             }
         }
     };
+
+    const tagline = "UN SABOR DIFERENTE";
 
     return (
         <AnimatePresence mode="wait">
@@ -60,110 +50,182 @@ export default function SplashScreen() {
                     variants={containerVariants}
                     initial="initial"
                     exit="exit"
-                    className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#000000] overflow-hidden select-none"
-                    style={{ willChange: "transform, opacity" }}
+                    className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#010303] overflow-hidden select-none"
+                    style={{ willChange: "opacity, transform" }}
                 >
-                    {/* Deep Space Atmosphere */}
+                    {/* Prismatic Background Layer with Shimmer */}
                     <div className="absolute inset-0 z-0">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-neutral-900 via-black to-black opacity-60" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#0a1a1a] via-black to-black opacity-90" />
 
-                        {/* Orbital Rings */}
-                        {[1, 2, 3].map((i) => (
+                        {/* Interactive Constellation - Optimized Count */}
+                        {[...Array(15)].map((_, i) => (
                             <motion.div
                                 key={i}
-                                custom={i}
-                                variants={orbitVariants}
-                                animate="animate"
-                                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border border-white/[0.03] rounded-full"
-                                style={{
-                                    width: `${25 * i}vw`,
-                                    height: `${25 * i}vw`,
+                                initial={{
+                                    x: Math.random() * 100 - 50 + "vw",
+                                    y: Math.random() * 100 - 50 + "vh",
+                                    opacity: 0
                                 }}
-                            >
-                                <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${i === 2 ? 'bg-yoko-primary' : 'bg-white/10'} blur-[1px]`} />
-                            </motion.div>
+                                animate={{
+                                    x: [null, Math.random() * 15 - 7 + "vw", Math.random() * 15 - 7 + "vw"],
+                                    y: [null, Math.random() * 15 - 7 + "vh", Math.random() * 15 - 7 + "vh"],
+                                    opacity: [0, 0.5, 0]
+                                }}
+                                transition={{
+                                    duration: 4 + Math.random() * 6,
+                                    repeat: Infinity,
+                                    ease: "easeInOut"
+                                }}
+                                className="absolute w-[2px] h-[2px] bg-yoko-primary rounded-full"
+                                style={{ willChange: "transform, opacity" }}
+                            />
                         ))}
+
+                        {/* Pulsing Light Flares - Optimized (Opacity only) */}
+                        <motion.div
+                            animate={{ opacity: [0.1, 0.2, 0.1] }}
+                            transition={{ duration: 5, repeat: Infinity }}
+                            className="absolute top-1/4 -left-1/4 w-[80vw] h-[80vw] bg-yoko-primary/10 rounded-full blur-[100px]"
+                            style={{ willChange: "opacity" }}
+                        />
+                        <motion.div
+                            animate={{ opacity: [0.05, 0.15, 0.05] }}
+                            transition={{ duration: 7, repeat: Infinity, delay: 1 }}
+                            className="absolute -bottom-1/4 -right-1/4 w-[70vw] h-[70vw] bg-yoko-accent/10 rounded-full blur-[100px]"
+                            style={{ willChange: "opacity" }}
+                        />
                     </div>
 
                     <div className="relative z-10 flex flex-col items-center">
-                        {/* Central Luminous Core */}
-                        <div className="relative mb-20">
+                        {/* Heavy Atmosphere Entrance Flash */}
+                        <motion.div
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1.2, opacity: [0, 0.5, 0] }}
+                            transition={{ duration: 1, times: [0, 0.5, 1] }}
+                            className="absolute inset-0 bg-white blur-[80px] z-20 pointer-events-none"
+                        />
+
+                        {/* Iconic Logo Reveal */}
+                        <div className="relative mb-24 group">
                             <motion.div
-                                animate={{ scale: [1, 1.3, 1], opacity: [0.2, 0.5, 0.2] }}
-                                transition={{ duration: 3, repeat: Infinity }}
-                                className="absolute inset-0 bg-yoko-primary/40 blur-[100px] rounded-full"
+                                animate={{ opacity: [0.3, 0.5, 0.3] }}
+                                transition={{ duration: 4, repeat: Infinity }}
+                                className="absolute inset-0 bg-yoko-primary/40 blur-[80px] rounded-full"
                             />
 
-                            {/* Premium Metallic Logo */}
                             <motion.div
                                 variants={logoVariants}
                                 initial="initial"
                                 animate="animate"
-                                className="relative w-36 h-36 flex items-center justify-center"
+                                className="relative w-40 h-40 flex items-center justify-center cursor-default"
+                                style={{ willChange: "transform, opacity" }}
                             >
-                                <div className="absolute inset-0 bg-gradient-to-tr from-yoko-primary via-[#ff4d6d] to-yoko-accent rounded-[3rem] shadow-[0_0_100px_-10px_rgba(255,77,109,0.5)] border border-white/20 transform rotate-45 rotate-x-12 rotate-y-12 shadow-2xl overflow-hidden">
-                                    {/* Liquid Metal Sweep */}
+                                <div className="absolute inset-0 bg-gradient-to-br from-yoko-primary via-rose-600 to-yoko-accent rounded-[3.2rem] transform rotate-45 border border-white/40 shadow-[0_0_60px_-10px_rgba(255,50,100,0.4)] overflow-hidden scale-90 group-hover:scale-100 transition-transform duration-700">
                                     <motion.div
-                                        animate={{
-                                            left: ["-100%", "200%"],
-                                            top: ["200%", "-100%"]
-                                        }}
-                                        transition={{ duration: 4, repeat: Infinity, ease: [0.445, 0.05, 0.55, 0.95] }}
-                                        className="absolute inset-0 w-full h-[500%] bg-gradient-to-b from-transparent via-white/50 to-transparent -rotate-[60deg] blur-xl opacity-70"
+                                        animate={{ x: ["-250%", "250%"] }}
+                                        transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+                                        className="absolute inset-0 w-full h-[500%] bg-gradient-to-r from-transparent via-white/40 to-transparent -rotate-45"
+                                        style={{ willChange: "transform" }}
                                     />
                                 </div>
-
-                                <span className="relative z-10 text-white font-serif font-black text-8xl drop-shadow-[0_20px_30px_rgba(0,0,0,0.5)]">
-                                    Y
-                                </span>
+                                <span className="relative z-10 text-white font-serif font-black text-9xl select-none drop-shadow-2xl">Y</span>
                             </motion.div>
                         </div>
 
-                        {/* Kinetic Typography Reveal */}
-                        <div className="flex flex-col items-center gap-8">
-                            <div className="flex gap-4">
+                        {/* Kinetic Main Title */}
+                        <div className="flex flex-col items-center gap-12">
+                            <div className="flex gap-8 overflow-hidden py-6 px-10 relative">
                                 {["YOKO", "POKE"].map((word, wordIdx) => (
-                                    <div key={wordIdx} className="overflow-hidden">
-                                        <motion.div
-                                            initial={{ y: "150%" }}
+                                    <div key={wordIdx} className="relative group overflow-hidden">
+                                        <motion.h1
+                                            initial={{ y: "120%" }}
                                             animate={{ y: 0 }}
-                                            transition={{ delay: 1.5 + wordIdx * 0.2, duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
-                                            className="text-7xl md:text-9xl font-serif font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-white/30 uppercase leading-none tracking-tight"
+                                            transition={{ delay: 0.5 + wordIdx * 0.2, duration: 1, ease: [0.23, 1, 0.32, 1] }}
+                                            className="text-8xl md:text-[11rem] font-serif font-black text-white tracking-tighter leading-none"
+                                            style={{ willChange: "transform" }}
                                         >
                                             {word}
-                                        </motion.div>
+                                        </motion.h1>
+                                        <motion.div
+                                            initial={{ scaleX: 0 }}
+                                            animate={{ scaleX: 1 }}
+                                            transition={{ delay: 1.2 + wordIdx * 0.2, duration: 1, ease: "circOut" }}
+                                            className="absolute bottom-2 left-0 w-full h-[6px] bg-gradient-to-r from-yoko-primary via-white to-yoko-accent shadow-[0_0_20px_rgba(255,255,255,0.4)]"
+                                        />
                                     </div>
                                 ))}
                             </div>
 
-                            <div className="relative overflow-hidden">
+                            {/* Ultra-Premium Secondary Text Reveal - Optimized */}
+                            <div className="relative pt-10 min-h-[40px] flex items-center justify-center">
+                                {/* The 'Drawing Orb' */}
                                 <motion.div
-                                    initial={{ opacity: 0, letterSpacing: "2em", filter: "blur(10px)" }}
-                                    animate={{ opacity: 1, letterSpacing: "1em", filter: "blur(0px)" }}
-                                    transition={{ delay: 2.5, duration: 1.5, ease: "easeOut" }}
-                                    className="text-yoko-accent font-bold text-[13px] uppercase whitespace-nowrap"
-                                >
-                                    Freshness Redefined
-                                </motion.div>
+                                    initial={{ left: "0%", opacity: 0, scale: 0 }}
+                                    animate={{
+                                        left: ["0%", "100%"],
+                                        opacity: [0, 1, 1, 0],
+                                        scale: [0, 1, 1, 0]
+                                    }}
+                                    transition={{ delay: 1.5, duration: tagline.length * 0.08, ease: "linear" }}
+                                    className="absolute -top-2 h-4 w-4 bg-white rounded-full blur-[4px] z-30"
+                                    style={{ willChange: "left, opacity, transform" }}
+                                />
+
+                                <div className="flex px-12 items-center justify-center">
+                                    {tagline.split("").map((char, i) => (
+                                        <motion.span
+                                            key={i}
+                                            initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                                            animate={{
+                                                opacity: 1,
+                                                scale: 1,
+                                                y: 0
+                                            }}
+                                            transition={{
+                                                delay: 1.5 + i * 0.08,
+                                                duration: 0.6,
+                                                ease: "backOut"
+                                            }}
+                                            className="text-yoko-accent font-black text-[15px] md:text-[18px] tracking-[0.8em] inline-block whitespace-pre"
+                                            style={{ willChange: "opacity, transform" }}
+                                        >
+                                            {char}
+                                        </motion.span>
+                                    ))}
+                                </div>
+
+                                {/* Light Streak Background */}
                                 <motion.div
-                                    initial={{ scaleX: 0 }}
-                                    animate={{ scaleX: 1 }}
-                                    transition={{ delay: 2.8, duration: 1 }}
-                                    className="h-[1px] w-full bg-gradient-to-r from-transparent via-yoko-accent/50 to-transparent mt-4"
+                                    initial={{ scaleX: 0, opacity: 0 }}
+                                    animate={{ scaleX: 1, opacity: 0.6 }}
+                                    transition={{ delay: 1.5, duration: 1.5, ease: "circOut" }}
+                                    className="absolute -bottom-4 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-yoko-accent/50 to-transparent"
                                 />
                             </div>
                         </div>
                     </div>
 
-                    {/* Minimalist Data HUD */}
-                    <div className="absolute top-12 left-12 flex flex-col gap-1 opacity-20 hidden md:flex">
-                        <div className="h-1 w-12 bg-white/40" />
-                        <span className="text-[9px] font-mono text-white tracking-widest uppercase">System.Ready</span>
-                    </div>
-
-                    <div className="absolute bottom-12 right-12 flex flex-col items-end gap-1 opacity-20 hidden md:flex">
-                        <span className="text-[9px] font-mono text-white tracking-widest uppercase">Quality.Verified</span>
-                        <div className="h-1 w-12 bg-yoko-primary" />
+                    {/* Industrial Quality HUD - Fixed bottom */}
+                    <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-64 flex flex-col items-center gap-6">
+                        <div className="w-full h-[1px] bg-white/5 relative overflow-hidden">
+                            <motion.div
+                                initial={{ left: "-100%" }}
+                                animate={{ left: "100%" }}
+                                transition={{ duration: 4, ease: "linear" }}
+                                className="absolute top-0 bottom-0 w-full bg-gradient-to-r from-transparent via-yoko-primary to-transparent"
+                            />
+                        </div>
+                        <div className="flex gap-12 items-center opacity-30">
+                            <span className="text-[8px] font-mono text-white tracking-[0.5em] uppercase">Auth: 0928</span>
+                            <motion.span
+                                animate={{ opacity: [0.2, 0.5, 0.2] }}
+                                transition={{ duration: 1.5, repeat: Infinity }}
+                                className="text-[9px] font-mono text-white tracking-[0.6em] uppercase"
+                            >
+                                Loading Experience
+                            </motion.span>
+                            <span className="text-[8px] font-mono text-white tracking-[0.5em] uppercase">V: 2.4.1</span>
+                        </div>
                     </div>
                 </motion.div>
             )}
