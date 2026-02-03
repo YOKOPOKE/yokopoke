@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase-browser';
+import { supabase } from '@/lib/supabase';
 import { Plus, Trash2, Edit2, Save, X, ChevronRight, ChevronDown, ChevronLeft, Move, Copy, ArrowLeft, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/context/ToastContext';
@@ -44,7 +44,7 @@ type Ingredient = {
 };
 
 export default function BuilderPage() {
-    const supabase = createClient();
+    // const supabase = createClient(); // Use global instance
     const { showToast } = useToast();
 
     const [products, setProducts] = useState<Product[]>([]);
