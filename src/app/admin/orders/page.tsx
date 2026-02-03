@@ -352,7 +352,7 @@ const KitchenTicketCard = ({ order, updateStatus }: { order: Order, updateStatus
 
             {/* Items List (Kitchen Ticket Style) */}
             <div className="flex-1 overflow-y-auto max-h-[400px]">
-                {order.items.map((item: any, i) => (
+                {(Array.isArray(order.items) ? order.items : [order.items]).map((item: any, i) => (
                     <div key={i} className={`p-4 flex gap-3 border-b border-slate-50 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                         {/* Qty Box */}
                         <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-sm font-black shadow-md shadow-slate-200">

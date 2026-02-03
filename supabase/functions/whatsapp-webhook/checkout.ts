@@ -56,9 +56,23 @@ export async function handleCheckoutFlow(
     if (checkout.checkoutStep === 'COLLECT_DELIVERY') {
         let deliveryMethod: 'pickup' | 'delivery';
 
-        if (lowerText.includes('recoger') || lowerText.includes('tienda') || lowerText.includes('pickup')) {
+        // Check for specific IDs OR generic IDs (btn_0/btn_1) OR text content
+        if (
+            lowerText === 'pickup' ||
+            lowerText === 'btn_0' ||
+            lowerText.includes('recoger') ||
+            lowerText.includes('tienda') ||
+            lowerText.includes('pickup')
+        ) {
             deliveryMethod = 'pickup';
-        } else if (lowerText.includes('envío') || lowerText.includes('envio') || lowerText.includes('domicilio') || lowerText.includes('delivery')) {
+        } else if (
+            lowerText === 'delivery' ||
+            lowerText === 'btn_1' ||
+            lowerText.includes('envío') ||
+            lowerText.includes('envio') ||
+            lowerText.includes('domicilio') ||
+            lowerText.includes('delivery')
+        ) {
             deliveryMethod = 'delivery';
         } else {
             return {
@@ -69,17 +83,66 @@ export async function handleCheckoutFlow(
         }
 
         checkout.deliveryMethod = deliveryMethod;
-        checkout.checkoutStep = 'SHOW_SUMMARY';
+        checkout.deliveryMethod = deliveryMethod;
 
-        // Get product to show summary
-        const product = await getProductWithSteps(checkout.productSlug);
-        if (!product) {
-            return { text: "Error: Producto no encontrado." };
+        if (deliveryMethod === 'pickup') {
+            checkout.checkoutStep = 'COLLECT_PICKUP_TIME';
+
+            const slots = generateTimeSlots();
+            const buttons = slots.slice(0, 3).map(s => `🕒 ${s}`); // Max 3 buttons
+
+            // If more than 3 slots, maybe just show 3 for now or list body
+            const slotsText = slots.map(s => `• ${s}`).join('\n');
+
+            return {
+                text: `📍 *Recoger en Tienda*\n\n¿A qué hora pasas por tu pedido? (Estimado)\n\n${slotsText}\n\nSelecciona una hora 👇`,
+                useButtons: true,
+                buttons: slots.slice(0, 3)
+            };
+        } else {
+            // Delivery - Go to Summary (or Address if implemented later)
+            checkout.checkoutStep = 'SHOW_SUMMARY';
+
+            // Get product to show summary
+            const product = await getProductWithSteps(checkout.productSlug);
+            if (!product) return { text: "Error: Producto no encontrado." };
+
+            const { total, summary } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
+
+            return {
+                text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n📍 *Entrega:* 🚗 Envío a domicilio\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto?`,
+                useButtons: true,
+                buttons: ['✅ Confirmar Orden', '❌ Cancelar']
+            };
+        }
+    }
+
+    // Step 2.5: COLLECT_PICKUP_TIME
+    if (checkout.checkoutStep === 'COLLECT_PICKUP_TIME') {
+        // Validate time selection
+        // Accept any text basically, but prioritize button clicks
+        // Clean text to match slot format if possible, or just accept whatever they typed
+
+        let selectedTime = text.replace(/[🕒✅]/g, '').trim();
+
+        // Basic validation: length
+        if (selectedTime.length < 3) {
+            const slots = generateTimeSlots();
+            return {
+                text: "⚠️ Por favor selecciona una hora válida:",
+                useButtons: true,
+                buttons: slots.slice(0, 3)
+            };
         }
 
-        // Calculate order details
+        checkout.pickupTime = selectedTime;
+        checkout.checkoutStep = 'SHOW_SUMMARY';
+
+        const product = await getProductWithSteps(checkout.productSlug);
+        if (!product) return { text: "Error: Producto no encontrado." };
+
         const { total, summary } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
-        const deliveryText = deliveryMethod === 'pickup' ? '🏪 Recoger en tienda' : '🚗 Envío a domicilio';
+        const deliveryText = `🏪 Recoger: ${selectedTime}`;
 
         return {
             text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n📍 *Entrega:* ${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto?`,
@@ -90,7 +153,8 @@ export async function handleCheckoutFlow(
 
     // Step 3: SHOW_SUMMARY (Confirmation)
     if (checkout.checkoutStep === 'SHOW_SUMMARY') {
-        if (lowerText.includes('cancelar')) {
+        if (lowerText.includes('cancelar') || lowerText.includes('btn_1') || (lowerText === 'btn_1')) { // FIX: Robust check
+
             return {
                 text: "❌ Orden cancelada. ¿Quieres empezar de nuevo?",
                 useButtons: true,
@@ -98,7 +162,7 @@ export async function handleCheckoutFlow(
             };
         }
 
-        if (!lowerText.includes('confirmar')) {
+        if (!lowerText.includes('confirmar') && lowerText !== 'btn_0') {
             return {
                 text: "⚠️ Por favor confirma o cancela tu orden:",
                 useButtons: true,
@@ -167,6 +231,34 @@ function calculateCheckoutSummary(product: any, selections: Record<number, numbe
     return {
         total: totalPrice,
         summary,
-        items: itemsJson
+        items: [itemsJson]
     };
+}
+
+function generateTimeSlots(): string[] {
+    const now = new Date();
+    // Convert to America/Mexico_City
+    // Note: Deno deploy supports IANA timezones
+    const mxDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+
+    // Start 20 mins from now (Prep time)
+    mxDate.setMinutes(mxDate.getMinutes() + 20);
+
+    // Round up to next 20 interval
+    const remainder = mxDate.getMinutes() % 20;
+    if (remainder !== 0) {
+        mxDate.setMinutes(mxDate.getMinutes() + (20 - remainder));
+    }
+    mxDate.setSeconds(0);
+    mxDate.setMilliseconds(0);
+
+    const slots: string[] = [];
+    // Generate next 5 slots
+    for (let i = 0; i < 5; i++) {
+        // Format: HH:MM AM/PM
+        const timeStr = mxDate.toLocaleTimeString("es-MX", { hour: '2-digit', minute: '2-digit', hour12: true });
+        slots.push(timeStr);
+        mxDate.setMinutes(mxDate.getMinutes() + 20);
+    }
+    return slots;
 }

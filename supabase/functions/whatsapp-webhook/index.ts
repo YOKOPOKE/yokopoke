@@ -281,27 +281,60 @@ async function handleBuilderFlow(context: MessageContext, session: SessionData, 
         const remainingIncluded = Math.max(0, stepIncluded - currentCount);
 
         // Determine if we can show "Next/Done" option
-        const canAdvance = currentSelections.length > 0; // Simplified rule: if they have at least 1, they can usually proceed (unless min rule exists)
+        const canAdvance = currentSelections.length > 0; // Simplified rule
 
         // Options List
         let listRows = currentStep.options.slice(0, 9).map(o => {
             const isSelected = currentSelections.includes(o.id);
-            const extra = o.price_extra || 0;
-            const price = (extra > 0 && !isSelected) ? `+$${extra}` : ''; // Show price if not selected
+            // Fix Pricing Display Logic
+            let displayPrice = "";
+            let baseExtra = currentStep.price_per_extra || 0;
+            let optExtra = o.price_extra || 0;
+
+            if (isSelected) {
+                // If selected, check if it was one of the free ones
+                const selectionIndex = currentSelections.indexOf(o.id);
+                // Note: accurate selection index relies on order preservation which we fixed in calc logic
+                // For display, we approximate.
+                if (selectionIndex < stepIncluded) {
+                    // Covered by included. Only show if logic implies paying premium?
+                    // Usually included covers Everything unless explicit rule. 
+                    // Let's hide price if included to be cleaner.
+                } else {
+                    const total = baseExtra + optExtra;
+                    if (total > 0) displayPrice = `+$${total}`;
+                }
+            } else {
+                // Not selected
+                if (remainingIncluded > 0) {
+                    // Start consuming included slots
+                    // If included covers base price, we only show premium extra
+                    if (optExtra > 0) displayPrice = `+$${optExtra}`;
+                } else {
+                    // Consumes extra slot
+                    const total = baseExtra + optExtra;
+                    if (total > 0) displayPrice = `+$${total}`;
+                }
+            }
+
             const prefix = isSelected ? '✅ ' : '';
             return {
                 id: o.id.toString(),
                 title: `${prefix}${o.name}`.substring(0, 24),
-                description: price
+                description: displayPrice
             };
         });
 
         // Add "Next" Option if applicable
         if (canAdvance) {
+            const isLastStep = state.stepIndex === product.steps.length - 1;
+            const nextLabel = isLastStep ? "✅ TERMINAR" : "➡️ SIGUIENTE";
+            const nextDesc = isLastStep ? "Finalizar armado" : "Ir al siguiente paso";
+
             listRows.unshift({ // Add to TOP for visibility
-                id: "listo", // Special ID we already handle in isExplicitDone logic
-                title: "✅ LISTO / SIGUIENTE",
-                description: "Guardar y continuar"
+                id: "listo",
+                title: nextLabel,
+                description: nextDesc
             });
         }
 
@@ -318,40 +351,9 @@ async function handleBuilderFlow(context: MessageContext, session: SessionData, 
             body += `\n\n${remainingIncluded} más GRATIS`;
         }
 
-        // Build rows with dynamic pricing
-        const rows = currentStep.options.map(o => {
-            let displayPrice = "";
-            let baseExtra = currentStep.price_per_extra || 0;
-            let optExtra = o.price_extra || 0;
-
-            const isSelected = currentSelections.includes(o.id);
-            const selectionIndex = currentSelections.indexOf(o.id);
-
-            if (!isSelected) {
-                // Potential selection
-                if (remainingIncluded > 0) {
-                    if (optExtra > 0) displayPrice = `+$${optExtra}`;
-                } else {
-                    const totalExtra = baseExtra + optExtra;
-                    if (totalExtra > 0) displayPrice = `+$${totalExtra}`;
-                }
-            } else {
-                // Already selected
-                if (selectionIndex >= stepIncluded) {
-                    const totalExtra = baseExtra + optExtra;
-                    if (totalExtra > 0) displayPrice = `+$${totalExtra}`;
-                } else if (optExtra > 0) {
-                    displayPrice = `+$${optExtra}`;
-                }
-            }
-
-            const check = isSelected ? '✅ ' : '';
-            return {
-                id: o.id.toString(),
-                title: `${check}${o.name}`.substring(0, 24),
-                description: displayPrice || undefined
-            };
-        });
+        // Build rows variable for sendListMessage (using the listRows we just built, but cleaning properties)
+        // Wait, listRows already has structure {id, title, description}.
+        // The previous code had a redundant 'const rows =' block. I will use listRows directly but need to match section format.
 
         // Try sending List Message
         const success = await sendListMessage(context.from, {
@@ -361,38 +363,16 @@ async function handleBuilderFlow(context: MessageContext, session: SessionData, 
             buttonText: `Ver ${currentStep.label}`,
             sections: [{
                 title: currentStep.label || 'Opciones',
-                rows: rows.slice(0, 10) // Max 10 rows
+                rows: listRows.slice(0, 10) // Max 10 rows
             }]
         });
 
         // Fallback to text if List failed
         if (!success) {
             const optionsList = currentStep.options.map(o => {
-                let displayPrice = "";
-                let baseExtra = currentStep.price_per_extra || 0;
-                let optExtra = o.price_extra || 0;
-
-                const isSelected = currentSelections.includes(o.id);
-                const selectionIndex = currentSelections.indexOf(o.id);
-
-                if (!isSelected) {
-                    if (remainingIncluded > 0) {
-                        if (optExtra > 0) displayPrice = ` (+$${optExtra})`;
-                    } else {
-                        const totalExtra = baseExtra + optExtra;
-                        if (totalExtra > 0) displayPrice = ` (+$${totalExtra})`;
-                    }
-                } else {
-                    if (selectionIndex >= stepIncluded) {
-                        const totalExtra = baseExtra + optExtra;
-                        if (totalExtra > 0) displayPrice = ` (+$${totalExtra})`;
-                    } else if (optExtra > 0) {
-                        displayPrice = ` (+$${optExtra})`;
-                    }
-                }
-
-                const check = isSelected ? '✅ ' : '• ';
-                return `${check}${o.name}${displayPrice}`;
+                // Simplified fallback text logic
+                const check = currentSelections.includes(o.id) ? '✅ ' : '• ';
+                return `${check}${o.name}`;
             }).join('\n');
 
             return {
@@ -404,11 +384,14 @@ async function handleBuilderFlow(context: MessageContext, session: SessionData, 
         // List sent successfully - check if multi-selection and has selections
         if (currentStep.max_selections && currentStep.max_selections > 1 && selectedNames.length > 0) {
             // Send follow-up buttons for multi-selection
+            const isLastStep = state.stepIndex === product.steps.length - 1;
+            const doneBtn = isLastStep ? '✅ Terminar' : '➡️ Siguiente';
+
             await sendButtonMessage(context.from, {
                 body: `${selectedNames.length} seleccionado(s).\n¿Qué quieres hacer?`,
                 buttons: [
                     { id: 'agregar_mas', title: '➕ Agregar más' },
-                    { id: 'listo', title: '✅ Listo' }
+                    { id: 'listo', title: doneBtn }
                 ]
             });
         }
@@ -532,7 +515,12 @@ function calculateOrderDetails(product: ProductTree, selections: Record<number, 
     product.steps.forEach(step => {
         const selectedOptionIds = selections[step.id] || [];
         const included = step.included_selections || 0;
-        const selectedOptions = step.options.filter(o => selectedOptionIds.includes(o.id));
+
+        // Fix: Map IDs to options to preserve SELECTION ORDER (Critical for pricing)
+        // This ensures the first 'included' items selected by user are the free ones.
+        const selectedOptions = selectedOptionIds
+            .map(id => step.options.find(o => o.id === id))
+            .filter((o): o is any => !!o);
 
         if (selectedOptions.length > 0) {
             summary += `\n\n*${step.label}:*`;
