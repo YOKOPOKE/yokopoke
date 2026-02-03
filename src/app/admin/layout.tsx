@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { LayoutDashboard, Coffee, Settings, LogOut, Menu as MenuIcon, X, Store } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createClient } from '@/lib/supabase-browser';
+import { supabase } from '@/lib/supabase';
 import ToastContainer from '@/components/ui/Toast';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -13,7 +13,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const pathname = usePathname();
     const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const supabase = createClient();
 
     useEffect(() => {
         const checkAuth = async () => {
@@ -42,7 +41,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 pathname={pathname}
                 isMobileNavOpen={isMobileNavOpen}
                 setIsMobileNavOpen={setIsMobileNavOpen}
-                supabase={supabase}
                 router={router}
             />
         </AdminProvider>
@@ -54,7 +52,7 @@ import { AdminProvider, useAdmin } from '@/context/AdminContext';
 import IncomingOrderModal from '@/components/admin/IncomingOrderModal';
 import { Volume2 } from 'lucide-react';
 
-function AdminLayoutContent({ children, pathname, isMobileNavOpen, setIsMobileNavOpen, supabase, router }: any) {
+function AdminLayoutContent({ children, pathname, isMobileNavOpen, setIsMobileNavOpen, router }: any) {
     const { testAudio } = useAdmin();
 
     const navItems = [
