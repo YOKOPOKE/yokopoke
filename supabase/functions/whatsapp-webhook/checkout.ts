@@ -185,6 +185,8 @@ export async function handleCheckoutFlow(
             status: 'pending',
             items: items,
             delivery_method: checkout.deliveryMethod,
+            pickup_time: checkout.pickupTime,
+            address: checkout.address,
             payment_status: 'pending',
             created_at: new Date().toISOString()
         };

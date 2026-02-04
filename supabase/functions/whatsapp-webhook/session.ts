@@ -16,8 +16,9 @@ export interface CheckoutState {
     totalPrice: number;
     customerName?: string;
     deliveryMethod?: 'pickup' | 'delivery';
-    checkoutStep: 'COLLECT_NAME' | 'COLLECT_DELIVERY' | 'COLLECT_PICKUP_TIME' | 'SHOW_SUMMARY' | 'CONFIRMATION';
+    checkoutStep: 'COLLECT_NAME' | 'COLLECT_DELIVERY' | 'COLLECT_ADDRESS' | 'COLLECT_PICKUP_TIME' | 'SHOW_SUMMARY' | 'CONFIRMATION';
     pickupTime?: string;
+    address?: string;
     flowData?: any; // Store data from Flow
 }
 
