@@ -89,7 +89,7 @@ export default function Footer() {
                 </div>
 
                 <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <p className="text-xs text-gray-500">© 2024 Yoko Poke House. Todos los derechos reservados.</p>
+                    <p className="text-xs text-gray-500">© 2024 Yoko Poke House. Todos los derechos reservados. <span className="opacity-50">v2.1</span></p>
                     <p className="text-xs text-gray-600 flex items-center gap-1">
                         Diseñado con <Heart size={12} className="text-red-500 fill-current animate-pulse" /> en Comitán
                     </p>
