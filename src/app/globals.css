@@ -18,6 +18,7 @@
   --animate-float: float 6s ease-in-out infinite;
   --animate-spin-slow: spin-slow 10s linear infinite;
   --animate-drift: drift 20s infinite alternate;
+  --animate-shimmer: shimmer 2s infinite linear;
 }
 
 /* Custom Styles */
@@ -123,6 +124,16 @@
 
   100% {
     transform: translate(30px, 50px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%) skewX(12deg);
+  }
+
+  100% {
+    transform: translateX(200%) skewX(12deg);
   }
 }
 

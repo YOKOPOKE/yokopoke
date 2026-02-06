@@ -39,6 +39,20 @@ export const metadata: Metadata = {
     description: "El mejor Poke de Comitán",
     images: ["https://images.unsplash.com/photo-1546069901-ba9599a7e63c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=90"],
   },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Pide Ya",
+  },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, // App-like feel
+  themeColor: "#2F5233",
 };
 
 import { CartProvider } from "@/context/CartContext";

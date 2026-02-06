@@ -6,6 +6,8 @@ import { Menu as MenuIcon, X, ShoppingBag, Edit3 } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { motion, AnimatePresence } from "framer-motion";
 
+import LoyaltyWidget from "./LoyaltyWidget";
+
 export default function Navbar() {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -132,8 +134,11 @@ export default function Navbar() {
                                     </Link>
                                 );
                             })}
+
+                            <LoyaltyWidget />
+
                             <button
-                                onClick={toggleCart} // Connect toggle
+                                onClick={toggleCart}
                                 className="bg-white text-yoko-dark border border-gray-200 p-3 rounded-full hover:bg-gray-50 transition shadow-sm hover:shadow-md ml-2 relative group"
                                 aria-label="Ver Carrito"
                             >
@@ -198,6 +203,11 @@ export default function Navbar() {
                                 {item}
                             </a>
                         ))}
+
+                        <div className="scale-125">
+                            <LoyaltyWidget />
+                        </div>
+
                         <button
                             className="bg-yoko-accent text-white px-8 py-4 rounded-full font-bold shadow-xl flex items-center gap-2 text-lg uppercase tracking-wider"
                             onClick={() => { setIsMobileMenuOpen(false); openBuilder(); }}
