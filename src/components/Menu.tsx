@@ -149,7 +149,10 @@ export default function Menu() {
         const sortedCats: string[] = [];
         dbCategories.forEach(c => {
             if (activeCatNames.has(c.name)) {
-                sortedCats.push(c.name);
+                // Prevent duplicates if multiple categories have same name
+                if (!sortedCats.includes(c.name)) {
+                    sortedCats.push(c.name);
+                }
             }
         });
 
