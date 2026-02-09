@@ -99,24 +99,39 @@ export async function generateConversationalResponse(
 }
 
 export async function analyzeIntent(
-    userText: string
+    userText: string,
+    history: string[] = [] // Optional history
 ): Promise<{ intent: string, entities: any }> {
     if (!model) return { intent: 'unknown', entities: {} };
 
+    const historyContext = history.length > 0 ? `HISTORIAL DE CONVERSACIÓN:\n${history.map(m => `- ${m}`).join('\n')}\n` : "";
+
     // Robust Intent Prompt
     const prompt = `
-    Analyze the user's message in a Poke Restaurant Bot context.
-    The user might be hungry, asking questions, or just chatting.
-    Message: "${userText}"
-    
-    Intents:
-    - START_BUILDER: User EXPLICITLY wants to BUILD/CUSTOMIZE. Keywords: "armar", "personalizar", "sushi burger" (always builder), "mediano", "grande".
-    - MENU_QUERY: General menu, "what do you have", "show menu".
-    - CATEGORY_FILTER: User asks for specific category. Keywords: "bebidas", "postres", "ver entradas", "tienes refrescos".
-    - INFO: Hours, location.
-    - CHAT: Casual greeting.
+    Eres un asistente de ventas experto para Yoko Poke. Analiza el ÚLTIMO mensaje del usuario teniendo en cuenta el historial.
 
-    Output JSON: { "intent": "START_BUILDER" | "MENU_QUERY" | "CATEGORY_FILTER" | "INFO" | "CHAT", "size_preference": "mediano" | "grande" | null, "category_keyword": "bebida" | "postre" | null }
+    ${historyContext}
+    MENSAJE ACTUAL DEL USUARIO: "${userText}"
+    
+    Tus objetivos son:
+    1. Detectar si el usuario quiere ARMAR/PERSONALIZAR un poke desde cero (START_BUILDER).
+       - Keywords: "armar", "personalizar", "crear mi propio", "mediano", "grande", "burger" (Sushi Burgers son armables).
+       - ESTO ES SOLO PARA "POKE MEDIANO", "POKE GRANDE" O "SUSHI BURGERS".
+    
+    2. Detectar si quiere pedir un producto DEL MENU / CARTA (ADD_TO_CART).
+       - Productos fijos: "Pokes de la Casa" (Spicy Tuna, Yoko Especial, etc), "Bebidas", "Postres", "Entradas".
+       - Si dice "dame un spicy tuna" -> ADD_TO_CART.
+       - Si dice "spicy tuna" (nombre exacto del producto) -> ADD_TO_CART.
+       - Si dice "tienes pokes de la casa?" -> CATEGORY_FILTER.
+
+    3. Detectar preguntas informativas (INFO) o estatus de pedido (STATUS).
+    
+    Salida JSON esperada:
+    {
+        "intent": "START_BUILDER" | "ADD_TO_CART" | "CATEGORY_FILTER" | "INFO" | "STATUS" | "CHAT",
+        "product_hint": string | null, // Ej: "coca cola", "spicy tuna", "mediano"
+        "category_keyword": string | null // Ej: "bebida", "postre"
+    }
     `;
 
     try {
@@ -134,6 +149,11 @@ export interface SalesResponse {
     text: string;
     show_image_url?: string;
     suggested_actions?: string[];
+    useList?: boolean;
+    listData?: {
+        title: string;
+        rows: Array<{ id: string, title: string, description: string }>;
+    };
 }
 
 /**
@@ -165,17 +185,49 @@ export async function generateSalesResponse(
     USER MESSAGE: "${userText}"
     
     INSTRUCTIONS:
-    1. Answer the user's question using the Menu.
-    2. If the user asks about a specific product (e.g. "How is the burger?", "Show me the poke"), YOU MUST RETURN ITS IMAGE URL in the JSON.
-    3. If you recommend a specific product strongly, also include its image.
-    4. Keep text under 200 chars. Use minimal emojis (🥗, 🔥).
-    5. return JSON ONLY.
+    1. IF USER ASKS FOR MENU ITEM (e.g. "Spicy Tuna", "Bebidas", "Postre"):
+       - SELL IT! Describe it deliciously using the menu info.
+       - RETURN ITS IMAGE URL in the JSON if available.
+       - **IF USER SAYS "SIN [ingrediente]" or "QUITAR [ingrediente]" or "NO QUIERO [ingrediente]"**:
+         * Acknowledge it warmly: "¡Claro! Lo preparamos sin [ingrediente] para ti. Quedará delicioso. 😊"
+         * EXPLAIN they should use the builder if they want exact customization: "Para armarlo a tu gusto exacto con todos los cambios, usa https://yokopoke.mx/#product-selector"
+         * DO NOT add product to cart if heavy modification is requested.
+       - SUGGEST ordering it ("¿Te lo marcho?", "¡Excelente elección!").
+    
+    2. IF USER WANTS TO CUSTOMIZE/BUILD (e.g. "Make my own", "Swap ingredients", "Armar", "Sin pícate"):
+       - POLITELY REDIRECT to the web builder: https://yokopoke.mx/#product-selector
+       - Say something like: "¡Sin problema! 😊 Para quitar el pícate y armarlo a tu gusto exacto, usa nuestro constructor interactivo aquí: [URL]. ¡Quedará delicioso! 🥣✨".
+
+    3. IF USER ASKS FOR GENERAL MENU or CATEGORY (e.g. "Show menu", "What drinks?", "Postres"):
+       - RETURN A LIST STRUCTURE in the JSON.
+       - "listData" must include: title (Category Name), rows (Array of {id: "Product Name", title: "Product Name + Emoji", description: "Price + Short Ingredients"}).
+       - Max 10 items per list.
+    
+    4. IF USER WANTS TO FINALIZE ORDER ("Finalizar pedido", "Checkout", "Ya está", "Esto es todo"):
+       - Ask for their name in a friendly way: "¡Perfecto! Para procesar tu orden, ¿a qué nombre la dejo?"
+       - NO BUTTONS. Let them type.
+    
+    5. **BUTTON LIMITS**:
+       - ONLY provide "suggested_actions" if ABSOLUTELY NECESSARY (e.g., "Agregar al carrito", "Finalizar pedido").
+       - MAX 2 BUTTONS. No more.
+       - If asking a question, DO NOT use buttons. Let them TYPE.
+       - NEVER suggest "Ver Bebidas", "Ver Postres" buttons unless explicitly relevant.
+    
+    6. Keep text under 200 chars. Use minimal emojis (🥗, 🔥, 😊).
+    7. return JSON ONLY.
     
     OUTPUT FORMAT:
     {
-      "text": "Your friendly response here",
+      "text": "Intro text (e.g. 'Aquí tienes nuestros favoritos 👇')",
       "show_image_url": "https://... (or null)",
-      "suggested_actions": ["Ver Menú", "Pedir Ahora"]
+      "suggested_actions": ["MAX 2 ACTIONS"],
+      "useList": true/false,
+      "listData": {
+        "title": "Sección del Menú",
+        "rows": [
+          { "id": "spicy_tuna", "title": "🌶️ Spicy Tuna", "description": "$160 - Atún, pepino, spicy mayo" }
+        ]
+      }
     }
     `;
 

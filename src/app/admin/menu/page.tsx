@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Plus, Save, Trash2, Edit2, ChevronRight, ArrowLeft,
     Layers, Package, CheckCircle2, XCircle, DollarSign, Image as ImageIcon,
-    ChefHat, Coffee, Search, MoreHorizontal, Settings
+    ChefHat, Coffee, Search, MoreHorizontal, Settings, Eye, EyeOff
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { ImageUpload } from '@/components/ui/ImageUpload';
@@ -82,6 +82,9 @@ export default function AdminMenuPage() {
         inputPlaceholder: '',
         onConfirm: (val?: string) => { }
     });
+
+    // Category Manager Modal State
+    const [showCategoryManager, setShowCategoryManager] = useState(false);
 
     const openModal = (
         title: string,
@@ -378,78 +381,239 @@ export default function AdminMenuPage() {
 
                 {/* --- HEADER --- */}
                 {view === 'LIST' && (
-                    <div className="flex flex-col md:flex-row justify-between items-end gap-6">
-                        <div>
-                            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Gestión del Menú</h1>
-                            <p className="text-sm font-bold text-slate-400">Administra tus productos, precios y stock.</p>
+                    <div className="space-y-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                            <div>
+                                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Gestión del Menú</h1>
+                                <p className="text-sm font-bold text-slate-400">Administra tus productos, precios y stock.</p>
+                            </div>
+                            <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
+                                <button onClick={() => setListTab('BUILDERS')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${listTab === 'BUILDERS' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                    <ChefHat size={16} /> Builders
+                                </button>
+                                <button onClick={() => setListTab('MENU')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${listTab === 'MENU' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                    <Coffee size={16} /> Carta
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
-                            <button onClick={() => setListTab('BUILDERS')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${listTab === 'BUILDERS' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                                <ChefHat size={16} /> Builders
-                            </button>
-                            <button onClick={() => setListTab('MENU')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${listTab === 'MENU' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                                <Coffee size={16} /> Carta
-                            </button>
-                        </div>
+                        {/* Category Manager Button - Full Width on Mobile */}
+                        <button
+                            onClick={() => setShowCategoryManager(true)}
+                            className="w-full md:w-auto bg-gradient-to-r from-violet-500 to-purple-600 px-6 py-3 rounded-2xl text-white hover:from-violet-600 hover:to-purple-700 font-black text-sm shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2.5 border-2 border-violet-400"
+                        >
+                            <Layers size={18} />
+                            <span className="text-base">Ver Todas las Categorías</span>
+                        </button>
                     </div>
                 )}
+
+
+                {/* CATEGORY MANAGER MODAL */}
+                <AnimatePresence>
+                    {showCategoryManager && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCategoryManager(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+                            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-2xl bg-slate-50 rounded-[2.5rem] shadow-2xl max-h-[85vh] flex flex-col overflow-hidden">
+                                <div className="p-8 bg-white border-b border-slate-100 flex justify-between items-center sticky top-0 z-10">
+                                    <h2 className="text-2xl font-black text-slate-900">Administrar Categorías</h2>
+                                    <button onClick={() => setShowCategoryManager(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"><XCircle size={24} className="text-slate-400" /></button>
+                                </div>
+                                <div className="p-8 overflow-y-auto space-y-4">
+                                    {categories.map(cat => (
+                                        <div key={cat.id} className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between shadow-sm hover:shadow-md transition-all gap-4">
+                                            <div className="flex items-center gap-4 flex-1">
+                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${cat.is_active ? 'bg-violet-50 text-violet-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                    {cat.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <h3 className={`font-black text-lg leading-tight ${cat.is_active ? 'text-slate-900' : 'text-slate-400'}`}>{cat.name}</h3>
+                                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">ID: {cat.id} • {cat.slug}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={() => handleToggleCategory(cat)} className={`p-2 rounded-xl border transition-all ${cat.is_active ? 'bg-green-50 text-green-600 border-green-100 hover:bg-green-100' : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'}`} title="Visible/Oculto">
+                                                    {cat.is_active ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+                                                </button>
+                                                <button onClick={() => handleEditCategory(cat)} className="p-2 rounded-xl bg-slate-50 text-slate-500 border border-slate-200 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-100 transition-all" title="Editar Nombre">
+                                                    <Edit2 size={20} />
+                                                </button>
+                                                <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500 border border-rose-100 hover:bg-rose-100 transition-all" title="Eliminar Categoría">
+                                                    <Trash2 size={20} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {categories.length === 0 && <div className="text-center py-10 text-slate-400 font-bold">No hay categorías.</div>}
+                                </div>
+                                <div className="p-6 bg-white border-t border-slate-100">
+                                    <button onClick={handleCreateCategory} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-lg hover:shadow-xl hover:bg-black transition-all flex items-center justify-center gap-2">
+                                        <Plus size={20} /> Crear Nueva Categoría
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
 
 
                 <AnimatePresence mode="wait">
                     {/* VIEW: LIST */}
                     {view === 'LIST' && (
-                        <motion.div
-                            key="list"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6"
-                        >
+                        <div className="space-y-12 pb-20">
+                            {/* Create Button (Floating or Top) */}
                             <button
                                 onClick={handleCreateProduct}
-                                className="group flex flex-col items-center justify-center gap-3 bg-white border-2 border-dashed border-slate-200 rounded-3xl p-8 hover:border-rose-300 hover:bg-rose-50 transition-all min-h-[220px]"
+                                className="w-full md:w-auto px-6 py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-lg hover:shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 mb-8"
                             >
-                                <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-rose-500 shadow-sm transition-colors">
-                                    <Plus size={24} />
-                                </div>
-                                <span className="font-bold text-slate-400 group-hover:text-rose-500">Crear Nuevo Producto</span>
+                                <div className="bg-white/20 p-1 rounded-lg"><Plus size={20} /></div>
+                                <span>Crear Nuevo Producto</span>
                             </button>
 
-                            {displayedProducts.map(p => (
-                                <div
-                                    key={p.id}
-                                    onClick={() => handleEditProduct(p)}
-                                    className="group relative bg-white rounded-3xl p-5 shadow-sm border border-slate-100 hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer h-full flex flex-col justify-between overflow-hidden"
-                                >
-                                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-slate-50 to-transparent rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-150" />
+                            {/* Categorized Lists */}
+                            {categories.map(cat => {
+                                const catProducts = displayedProducts.filter(p => p.category_id === cat.id);
+                                if (catProducts.length === 0 && !cat.is_active) return null; // Hide empty inactive categories if needed, or show placeholder
 
-                                    <div>
-                                        <div className="flex justify-between items-start mb-4 relative z-10">
-                                            <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center overflow-hidden shadow-inner border border-slate-100">
-                                                {p.image_url ? (
-                                                    <img src={p.image_url} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <div className="text-2xl">{p.type === 'burger' ? '🍔' : p.type === 'poke' ? '🥗' : '🍱'}</div>
+                                return (
+                                    <motion.div
+                                        key={cat.id}
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className={`bg-white rounded-[2.5rem] p-6 md:p-10 shadow-sm border ${cat.is_active ? 'border-slate-100' : 'border-slate-100 bg-slate-50/50 opacity-60'}`}
+                                    >
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                                            <div className="flex items-center gap-4">
+                                                <h2 className={`text-3xl font-black ${cat.is_active ? 'text-slate-900' : 'text-slate-400'}`}>
+                                                    {cat.name}
+                                                </h2>
+                                                {!cat.is_active && (
+                                                    <span className="px-3 py-1 bg-slate-200 text-slate-500 rounded-lg text-xs font-bold uppercase tracking-wide">Oculta</span>
                                                 )}
+                                                <span className="px-3 py-1 bg-slate-100 text-slate-400 rounded-lg text-xs font-bold uppercase tracking-wide">
+                                                    {catProducts.length} Productos
+                                                </span>
                                             </div>
-                                            <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide border ${p.is_active ? 'bg-green-50 text-green-600 border-green-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-                                                {p.is_active ? 'Activo' : 'Inactivo'}
+
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => handleToggleCategory(cat)}
+                                                    className="p-3 rounded-2xl bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                                                    title={cat.is_active ? "Ocultar Categoría" : "Mostrar Categoría"}
+                                                >
+                                                    {cat.is_active ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleEditCategory(cat)}
+                                                    className="p-3 rounded-2xl bg-slate-50 text-slate-400 hover:bg-violet-50 hover:text-violet-600 transition-colors"
+                                                    title="Editar Nombre"
+                                                >
+                                                    <Edit2 size={20} />
+                                                </button>
                                             </div>
                                         </div>
 
-                                        <h3 className="text-lg font-black text-slate-900 leading-tight mb-1 group-hover:text-rose-500 transition-colors">{p.name}</h3>
-                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">{p.category || 'General'}</p>
-                                    </div>
+                                        {catProducts.length > 0 ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+                                                {catProducts.map(p => (
+                                                    <div
+                                                        key={p.id}
+                                                        onClick={() => handleEditProduct(p)}
+                                                        className="group relative bg-white rounded-3xl p-5 shadow-sm border border-slate-100 hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer h-full flex flex-col justify-between overflow-hidden"
+                                                    >
+                                                        {/* Gradient Blob */}
+                                                        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-slate-50 to-transparent rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-150" />
 
-                                    <div className="mt-6 pt-4 border-t border-slate-50 flex justify-between items-center">
-                                        <span className="font-mono font-black text-xl text-slate-800">${p.base_price}</span>
-                                        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-slate-900 group-hover:text-white transition-all">
-                                            <Edit2 size={14} />
-                                        </div>
+                                                        <div>
+                                                            <div className="flex justify-between items-start mb-4 relative z-10">
+                                                                <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center overflow-hidden shadow-inner border border-slate-100">
+                                                                    {p.image_url ? (
+                                                                        <img src={p.image_url} className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <div className="text-2xl">{p.type === 'burger' ? '🍔' : p.type === 'poke' ? '🥗' : '🍱'}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide border ${p.is_active ? 'bg-green-50 text-green-600 border-green-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                                                                    {p.is_active ? 'Activo' : 'Inactivo'}
+                                                                </div>
+                                                            </div>
+
+                                                            <h3 className="text-lg font-black text-slate-900 leading-tight mb-1 group-hover:text-rose-500 transition-colors">{p.name}</h3>
+                                                            {p.description && <p className="text-xs font-medium text-slate-400 line-clamp-2 mb-2">{p.description}</p>}
+                                                        </div>
+
+                                                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center">
+                                                            <span className="font-mono font-black text-xl text-slate-800">${p.base_price}</span>
+                                                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                                                                <Edit2 size={14} />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+
+                                                {/* Add Product Shortcut Card */}
+                                                <button
+                                                    onClick={() => {
+                                                        // Pre-select category for new product? Requires modifying handleCreateProduct
+                                                        // For now just open create logic
+                                                        handleCreateProduct();
+                                                    }}
+                                                    className="group flex flex-col items-center justify-center gap-3 bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-3xl p-8 hover:border-violet-300 hover:bg-violet-50 transition-all min-h-[200px]"
+                                                >
+                                                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-300 group-hover:text-violet-500 shadow-sm transition-colors">
+                                                        <Plus size={20} />
+                                                    </div>
+                                                    <span className="font-bold text-slate-400 text-sm group-hover:text-violet-600">Agregar a {cat.name}</span>
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-10 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                                                <p className="text-slate-400 font-bold mb-4">Esta categoría está vacía.</p>
+                                                <button onClick={handleCreateProduct} className="text-sm font-bold text-violet-600 hover:text-violet-800 underline">Agrega el primer producto</button>
+                                            </div>
+                                        )}
+                                    </motion.div>
+                                );
+                            })}
+
+                            {/* Uncategorized Section */}
+                            {displayedProducts.filter(p => !p.category_id).length > 0 && (
+                                <div className="bg-slate-100 rounded-[2.5rem] p-6 md:p-10 border border-slate-200">
+                                    <h2 className="text-2xl font-black text-slate-500 mb-6">Sin Categoría</h2>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+                                        {displayedProducts.filter(p => !p.category_id).map(p => (
+                                            <div
+                                                key={p.id}
+                                                onClick={() => handleEditProduct(p)}
+                                                className="group relative bg-white rounded-3xl p-5 shadow-sm border border-slate-200 hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer h-full flex flex-col justify-between overflow-hidden opacity-80 hover:opacity-100"
+                                            >
+                                                <div>
+                                                    <div className="flex justify-between items-start mb-4 relative z-10">
+                                                        <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center overflow-hidden shadow-inner border border-slate-100">
+                                                            <div className="text-2xl">❓</div>
+                                                        </div>
+                                                        <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide border ${p.is_active ? 'bg-green-50 text-green-600 border-green-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                                                            {p.is_active ? 'Activo' : 'Inactivo'}
+                                                        </div>
+                                                    </div>
+                                                    <h3 className="text-lg font-black text-slate-900 leading-tight mb-1 group-hover:text-rose-500 transition-colors">{p.name}</h3>
+                                                </div>
+                                                <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center">
+                                                    <span className="font-mono font-black text-xl text-slate-800">${p.base_price}</span>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-                            ))}
-                        </motion.div>
+                            )}
+
+                            {/* Bottom Action: Create Category */}
+                            <div className="flex justify-center pt-10">
+                                <button onClick={handleCreateCategory} className="px-8 py-4 bg-white border border-slate-200 text-slate-900 hover:border-violet-300 hover:text-violet-700 rounded-2xl font-black shadow-sm hover:shadow-lg transition-all flex items-center gap-3">
+                                    <Plus size={20} />
+                                    Crear Nueva Categoría
+                                </button>
+                            </div>
+                        </div>
                     )}
 
                     {/* VIEW: EDIT PRODUCT */}
@@ -472,8 +636,8 @@ export default function AdminMenuPage() {
                                         <div>
                                             <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2">{selectedProduct.name}</h2>
                                             <div className="flex items-center gap-3">
-                                                <span className="px-3 py-1 bg-slate-100 text-slate-500 text-xs font-bold uppercase tracking-wider rounded-lg border border-slate-200">
-                                                    {selectedProduct.category || 'General'}
+                                                <span className="px-3 py-1 bg-slate-100 text-slate-500 text-xs font-bold tracking-wider rounded-lg border border-slate-200">
+                                                    {categories.find(c => c.id === selectedProduct.category_id)?.name || selectedProduct.category || 'General'}
                                                 </span>
                                                 <span className="text-slate-400 font-bold">•</span>
                                                 <span className="font-mono text-slate-500 font-bold">${selectedProduct.base_price} base</span>
@@ -526,17 +690,21 @@ export default function AdminMenuPage() {
                                                         className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold text-slate-800 focus:outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all appearance-none min-w-0"
                                                     >
                                                         <option value="">-- Sin Categoría --</option>
-                                                        {categories.map(c => (
-                                                            <option key={c.id} value={c.id}>{c.name}</option>
-                                                        ))}
+                                                        {categories
+                                                            .filter(c => c.is_active || c.id === selectedProduct.category_id) // Show active OR current
+                                                            .map(c => (
+                                                                <option key={c.id} value={c.id}>
+                                                                    {c.name} {!c.is_active ? '(Oculta)' : ''}
+                                                                </option>
+                                                            ))}
                                                     </select>
 
                                                     <button
                                                         onClick={handleCreateCategory}
-                                                        className="px-4 bg-violet-50 text-violet-600 rounded-2xl border border-violet-100 hover:bg-violet-100 transition-colors"
+                                                        className="px-5 py-4 bg-violet-500 text-white rounded-2xl border-2 border-violet-600 hover:bg-violet-600 transition-all shadow-md hover:shadow-lg font-bold flex items-center gap-2"
                                                         title="Crear Nueva Categoría"
                                                     >
-                                                        <Plus size={20} />
+                                                        <Plus size={20} strokeWidth={3} />
                                                     </button>
 
                                                     {selectedProduct.category_id && (
@@ -546,10 +714,10 @@ export default function AdminMenuPage() {
                                                                     const cat = categories.find(c => c.id === selectedProduct.category_id);
                                                                     if (cat) handleEditCategory(cat);
                                                                 }}
-                                                                className="px-4 bg-slate-50 text-slate-500 rounded-2xl border border-slate-200 hover:bg-slate-100 transition-colors"
+                                                                className="px-5 py-4 bg-blue-500 text-white rounded-2xl border-2 border-blue-600 hover:bg-blue-600 transition-all shadow-md hover:shadow-lg font-bold flex items-center gap-2"
                                                                 title="Editar Nombre Categoría"
                                                             >
-                                                                <Edit2 size={18} />
+                                                                <Edit2 size={20} strokeWidth={3} />
                                                             </button>
 
                                                             {/* Toggle Hide/Show */}
@@ -558,25 +726,23 @@ export default function AdminMenuPage() {
                                                                 if (cat) return (
                                                                     <button
                                                                         onClick={() => handleToggleCategory(cat)}
-                                                                        className={`px-4 rounded-2xl border transition-colors flex items-center justify-center
+                                                                        className={`px-5 py-4 rounded-2xl border-2 transition-all shadow-md hover:shadow-lg font-bold flex items-center gap-2
                                                                             ${cat.is_active !== false
-                                                                                ? 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'
-                                                                                : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200'}`}
+                                                                                ? 'bg-green-500 text-white border-green-600 hover:bg-green-600'
+                                                                                : 'bg-slate-400 text-white border-slate-500 hover:bg-slate-500'}`}
                                                                         title={cat.is_active !== false ? 'Ocultar Categoría' : 'Mostrar Categoría'}
                                                                     >
-                                                                        <div className={`w-8 h-4 rounded-full relative transition-colors ${cat.is_active !== false ? 'bg-blue-500' : 'bg-slate-400'}`}>
-                                                                            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${cat.is_active !== false ? 'left-4.5' : 'left-0.5'}`} style={{ left: cat.is_active !== false ? '18px' : '2px' }} />
-                                                                        </div>
+                                                                        {cat.is_active !== false ? <Eye size={20} strokeWidth={3} /> : <EyeOff size={20} strokeWidth={3} />}
                                                                     </button>
                                                                 );
                                                             })()}
 
                                                             <button
                                                                 onClick={() => handleDeleteCategory(selectedProduct.category_id!)}
-                                                                className="px-4 bg-rose-50 text-rose-500 rounded-2xl border border-rose-100 hover:bg-rose-100 transition-colors"
+                                                                className="px-5 py-4 bg-rose-500 text-white rounded-2xl border-2 border-rose-600 hover:bg-rose-600 transition-all shadow-md hover:shadow-lg font-bold flex items-center gap-2"
                                                                 title="Eliminar Categoría"
                                                             >
-                                                                <Trash2 size={18} />
+                                                                <Trash2 size={20} strokeWidth={3} />
                                                             </button>
                                                         </>
                                                     )}

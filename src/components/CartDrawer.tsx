@@ -9,6 +9,50 @@ import CheckoutStatus, { CheckoutStep } from './CheckoutStatus';
 
 type Tab = 'cart' | 'checkout' | 'success';
 
+// Generate pickup time slots from 2:15 PM to 10 PM (Mexico City time)
+function generatePickupTimeSlots(): string[] {
+    const now = new Date();
+    // Convert to Mexico City time
+    const mxTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
+
+    const slots: string[] = [];
+
+    // Opening time: 2:15 PM
+    const openingTime = new Date(mxTime);
+    openingTime.setHours(14, 15, 0, 0); // 2:15 PM
+
+    // Closing time: 10:00 PM
+    const closingTime = new Date(mxTime);
+    closingTime.setHours(22, 0, 0, 0);
+
+    // Start time: either now + 20 min prep time, or opening time (whichever is later)
+    let currentSlot = new Date(mxTime);
+    currentSlot.setMinutes(currentSlot.getMinutes() + 20); // Add 20 min prep time
+
+    // If before opening, start at opening time
+    if (currentSlot < openingTime) {
+        currentSlot = new Date(openingTime);
+    }
+
+    // Round up to next 15-minute interval
+    const minutes = currentSlot.getMinutes();
+    const roundedMinutes = Math.ceil(minutes / 15) * 15;
+    currentSlot.setMinutes(roundedMinutes, 0, 0);
+
+    // Generate slots every 15 minutes until closing
+    while (currentSlot <= closingTime) {
+        const timeStr = currentSlot.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+        slots.push(timeStr);
+        currentSlot.setMinutes(currentSlot.getMinutes() + 15);
+    }
+
+    return slots.length > 0 ? slots : ['Cerrado por hoy'];
+}
+
 export default function CartDrawer() {
     const { items, isCartOpen, toggleCart, removeFromCart, cartTotal, clearCart } = useCart();
     const [step, setStep] = useState<Tab>('cart');
@@ -394,7 +438,7 @@ export default function CartDrawer() {
                                                             }}
                                                         >
                                                             <option value="">Seleccionar hora...</option>
-                                                            {['1:00 PM', '1:30 PM', '2:00 PM', '2:30 PM', '3:00 PM', '3:30 PM', '4:00 PM', '4:30 PM', '5:00 PM', '5:30 PM', '6:00 PM', '6:30 PM', '7:00 PM', '7:30 PM', '8:00 PM'].map((time) => (
+                                                            {generatePickupTimeSlots().map((time) => (
                                                                 <option key={time} value={time}>{time}</option>
                                                             ))}
                                                         </select>

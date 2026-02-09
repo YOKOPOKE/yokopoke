@@ -110,9 +110,7 @@ export async function handleCheckoutFlow(
             const { total, summary } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
 
             return {
-                text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n📍 *Entrega:* 🚗 Envío a domicilio\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto?`,
-                useButtons: true,
-                buttons: ['✅ Confirmar Orden', '❌ Cancelar']
+                text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n📍 *Entrega:* 🚗 Envío a domicilio\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto? Responde *Sí* para confirmar o *Cancelar* para reiniciar.`
             };
         }
     }
@@ -261,9 +259,7 @@ export async function handleCheckoutFlow(
         const deliveryText = `🏪 Recoger: ${selectedTime}`;
 
         return {
-            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n📍 *Entrega:* ${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto?`,
-            useButtons: true,
-            buttons: ['✅ Confirmar Orden', '❌ Cancelar']
+            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n📍 *Entrega:* ${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto? Responde *Sí* para confirmar o *Cancelar* para reiniciar.`
         };
     }
 
@@ -278,11 +274,13 @@ export async function handleCheckoutFlow(
             };
         }
 
-        if (!lowerText.includes('confirmar') && lowerText !== 'btn_0') {
+        // Accept multiple confirmation phrases
+        const confirmPhrases = ['confirmar', 'sí', 'si', 'ok', 'okay', 'yes', 'ya', 'dale', 'listo', 'btn_0'];
+        const isConfirmed = confirmPhrases.some(phrase => lowerText.includes(phrase));
+
+        if (!isConfirmed) {
             return {
-                text: "⚠️ Por favor confirma o cancela tu orden:",
-                useButtons: true,
-                buttons: ['✅ Confirmar Orden', '❌ Cancelar']
+                text: "⚠️ Por favor confirma tu orden escribiendo *Sí* o *Cancelar* para reiniciar."
             };
         }
 

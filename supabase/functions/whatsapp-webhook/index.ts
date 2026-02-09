@@ -25,40 +25,7 @@ export interface BotResponse {
     listData?: ListMessage;
 }
 
-// ... lines 40-600 ...
 
-// --- 5. CHECKOUT FLOW ---
-if (session.mode === 'CHECKOUT' && session.checkoutState) {
-    const checkoutResponse = await checkoutService.processCheckoutStep(
-        session.checkoutState,
-        text,
-        from,
-        context.name
-    );
-
-    // Save state
-    await updateSession(from, session);
-
-    // Send response
-    if (checkoutResponse.useList && checkoutResponse.listData) {
-        const success = await sendListMessage(from, checkoutResponse.listData);
-        if (!success) {
-            // Fallback to text if list fails
-            await sendWhatsAppText(from, checkoutResponse.text);
-        }
-    } else if (checkoutResponse.useButtons && checkoutResponse.buttons) {
-        await sendButtonMessage(from, {
-            body: checkoutResponse.text,
-            buttons: checkoutResponse.buttons.map((b: string, i: number) => ({
-                id: `btn_${i}`,
-                title: b
-            }))
-        });
-    } else {
-        await sendWhatsAppText(from, checkoutResponse.text);
-    }
-    return;
-}
 
 // WhatsApp Interactive Message Types
 export interface ListMessage {
@@ -98,35 +65,15 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
 
     // Check Menu - Send as List Message
     if (INTENTS.menu.some(k => text.includes(k))) {
-        const success = await sendListMessage(context.from, {
-            header: "🥗 Menú Yoko Poke",
-            body: "¿Qué se te antoja hoy?",
-            footer: "Yoko Poke",
-            buttonText: "Ver opciones",
-            sections: [{
-                title: "Menú Principal",
-                rows: [
-                    { id: "armar_poke", title: "🥗 Armar un Poke", description: "Crea tu poke ideal" },
-                    { id: "pokes_casa", title: "📋 Pokes de la Casa", description: "Recetas del chef" },
-                    { id: "burgers", title: "🍔 Sushi Burgers", description: "Fusión única" }
-                ]
-            }]
-        });
-
-        if (success) return null; // Already sent
-
-        // Fallback
-        return {
-            text: "🥗 *Menú Yoko*: \n\nSelecciona una opción para ver más:",
-            useButtons: true,
-            buttons: ['Ver Menú Completo', 'Armar un Poke', 'Sushi Burgers']
-        };
+        // Return null to let main flow handle it (avoid duplicates at line 760-783)
+        return null;
     }
 
-    // Default Greeting / Help (Main Menu)
+    // Default Greeting
     return {
-        text: "¡Konnichiwa! 🎌 Bienvenido a *Yoko Poke* 🥣\n\nSoy *POKI*, tu asistente personal 🤖✨.\n\nEstoy aquí para tomar tu orden volando 🚀. Puedes pedirme lo que quieras por chat o ordenar muy rapido en nuestra pagina \n🌐 https://yokopoke.mx\n\n¿Qué se te antoja probar hoy? 🥢",
-        useButtons: false
+        text: "¡Konnichiwa! 🎌 Bienvenido a *Yoko Poke* 🥣\n\nSoy *POKI*, tu asistente personal 🤖✨.\n\nEstoy aquí para tomar tu orden volando 🚀. Puedes pedirme lo que quieras por chat o ordenar en nuestra página \n🌐 https://yokopoke.mx\n\n¿Qué se te antoja probar hoy? 🥢",
+        useButtons: true,
+        buttons: ['Ver Menú']
     };
 }
 
@@ -601,7 +548,25 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
     // ⚡ FAST PASS & BUILDER CHECK
     // Priority 1: Instant Keywords (Sales, Greetings & Colloquial)
-    // Pass session to verify if we are in BUILDER mode (to avoid hijacking context)
+
+    // --- 0. SESSION TIMEOUT CHECK (2 HOURS) ---
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    const timeSinceLast = now - (session.lastInteraction || 0);
+
+    // If session is old (> 2 hours), reset it and treat as fresh
+    if (session.lastInteraction > 0 && timeSinceLast > TWO_HOURS_MS) {
+        console.log(`⏰ Session expired for ${from}. Resetting...`);
+        await clearSession(from);
+        session = await getSession(from); // Reload fresh session
+
+        // Force Greeting for expired session
+        const greeting = await handleBasicIntent({ from, text, timestamp: now });
+        if (greeting) {
+            await sendWhatsApp(from, greeting);
+            await updateSession(from, { ...session, lastInteraction: now });
+            return;
+        }
+    }
     const instantResponse = await handleInstantKeywords(from, lowerText, session);
     if (instantResponse) {
         console.log(`⚡ Fast Pass: Keyword Match for ${from}`);
@@ -658,7 +623,82 @@ export async function processMessage(from: string, text: string): Promise<void> 
     }
 
     // AI SALES / FALLBACK logic
+
+    // --- IGNORE INTERNAL BUTTON IDS ---
+    // If text starts with 'btn_', it's an unhandled button click from a flow we might not have caught.
+    // Or it might be a race condition. AI shouldn't try to answer "btn_0".
+    if (text.startsWith('btn_')) {
+        console.log(`🤖 Ignoring internal button ID: ${text}`);
+        return;
+    }
+
     const prodService = await import('./productService.ts');
+
+    // --- CATEGORY SELECTION HANDLER (cat_ID) ---
+    if (text.startsWith('cat_')) {
+        console.log("📂 Category Selected:", text);
+        const catIdStr = text.replace('cat_', '');
+        const catId = parseInt(catIdStr);
+
+        if (!isNaN(catId)) {
+            const products = await prodService.getProductsByCategory(catId);
+            const categories = await prodService.getCategories();
+            const currentCat = categories.find(c => c.id === catId);
+            const catName = currentCat ? currentCat.name : "Productos";
+
+            console.log(`🔎 LOOKUP: CatID=${catId}, FoundCat=${currentCat?.name} (ID: ${currentCat?.id}), ProductsFound=${products.length}`);
+            if (products.length === 0) {
+                // Debug: what categories DO we have?
+                console.log("DEBUG: All Categories:", JSON.stringify(categories));
+                // Debug: check all products to see if any match this category ID?
+                const allProds = await prodService.getAllProducts();
+                // Filter manually to see if DB query is being weird or strict
+                const matching = allProds.filter(p => p.category_id === catId);
+                console.log(`DEBUG: JS Filter Check - Products with category_id=${catId}: ${matching.length}`);
+                console.log("DEBUG: Sample Product:", JSON.stringify(allProds[0]));
+            }
+
+            if (products.length > 0) {
+                // Build Product List
+                const rows = products.slice(0, 10).map(p => ({
+                    id: `${p.name}`, // Use Name for seamless AI flow
+                    title: p.name.substring(0, 24),
+                    description: `$${p.base_price} - ${p.description ? p.description.substring(0, 60) : ''}`
+                }));
+
+                console.log(`📜 Sending List for Category: ${catName}, Rows: ${rows.length}`);
+
+                await sendListMessage(from, {
+                    header: `📂 ${catName}`,
+                    body: `Aquí tienes nuestros ${catName}. ¿Cuál se te antoja?`,
+                    footer: "Yoko Poke",
+                    buttonText: "Ver Productos",
+                    sections: [{
+                        title: catName,
+                        rows: rows
+                    }]
+                });
+                return;
+            } else {
+                console.log(`⚠️ ERROR: No products found for category ${catName} (ID: ${catId})`);
+
+                // Deep Debug: Output Category ID map
+                const allProds = await prodService.getAllProducts();
+                const debugMap = allProds.map(p => `[${p.id}] ${p.name} -> CatID: ${p.category_id}`).join('\n');
+                console.log("DEBUG: Full Product Map:\n" + debugMap);
+
+                // Proactive Fix: Find products with similar name to category?
+                if (catName.toLowerCase().includes('burger')) {
+                    const candidates = allProds.filter(p => p.name.toLowerCase().includes('burger'));
+                    console.log("DEBUG: Products with 'Burger' in name:", JSON.stringify(candidates.map(c => ({ id: c.id, name: c.name, cat_id: c.category_id }))));
+                }
+
+                await sendWhatsApp(from, { text: `Lo siento, por ahora no hay productos en ${catName}.` });
+                return;
+            }
+        }
+    }
+
     const menuContext = await prodService.getMenuContext();
     const allProducts = await prodService.getAllProducts();
 
@@ -666,37 +706,93 @@ export async function processMessage(from: string, text: string): Promise<void> 
     const geminiResponse = await import('./gemini.ts').then(m => m.analyzeIntent(aggregatedText));
     console.log("🧠 Intent:", geminiResponse.intent);
 
+    // --- PRIORITY: MENU & CATEGORIES ---
+    // If user asks for "Menu", use our deterministic Category List (handleBasicIntent logic)
+    // instead of letting AI halluciation or generate a partial list.
+    if (geminiResponse.intent === 'CATEGORY_FILTER' || aggregatedText.toLowerCase().includes('menu') || aggregatedText.toLowerCase().includes('menú')) {
+        // Re-use logic from handleBasicIntent but adapted
+        // Or just call handleBasicIntent if we export it?
+        // Let's implement robust Category List send here directly to be safe and avoid session reset side effects of handleBasicIntent.
+
+        console.log("📂 Intent is MENU/CATEGORY -> Sending Category List");
+        const cats = await prodService.getCategories();
+        const rows = [
+            { id: "armar_poke", title: "🥗 Armar un Poke", description: "Crea tu poke ideal" }
+        ];
+        cats.forEach(c => {
+            rows.push({
+                id: `cat_${c.id}`,
+                title: `${c.name}`,
+                description: c.description ? c.description.substring(0, 60) : "Ver productos"
+            });
+        });
+
+        await sendListMessage(from, {
+            header: "🥗 Menú Yoko Poke",
+            body: "¿Qué se te antoja hoy? Selecciona una categoría:",
+            footer: "Yoko Poke",
+            buttonText: "Ver Categorías",
+            sections: [{
+                title: "Nuestro Menú",
+                rows: rows.slice(0, 10)
+            }]
+        });
+        return; // STOP HERE. No double messages.
+    }
+
     let response: BotResponse;
 
     if (geminiResponse.intent === 'START_BUILDER') {
-        const slug = geminiResponse.entities?.size_preference === 'grande' ? 'poke-grande' : 'poke-mediano';
-        await startBuilder(from, slug);
-        return;
-    } else if (geminiResponse.intent === 'CATEGORY_FILTER' && geminiResponse.entities?.category_keyword) {
-        const kw = geminiResponse.entities.category_keyword;
-        const cats = await prodService.getCategories();
-        const match = cats.find(c => c.name.toLowerCase().includes(kw.toLowerCase()) || (c.slug && c.slug.includes(kw.toLowerCase())));
-        if (match) {
-            const products = await prodService.getProductsByCategory(match.id);
-            const list = products.slice(0, 5).map(p => `• ${p.name} ($${p.base_price})`).join('\n');
-            response = {
-                text: `📂 *${match.name} found:*\n\n${list}\n\n¿Te sirvo algo de aquí?`,
-                useButtons: true,
-                buttons: products.slice(0, 3).map(p => p.name)
-            };
-        } else {
-            const salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts));
-            response = { text: salesRes.text, useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0, buttons: salesRes.suggested_actions?.slice(0, 3) };
-        }
-    } else {
+        // Direct Sale - Let Sales Response handle it but ensure it doesn't redirect
         const salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts));
         response = {
             text: salesRes.text,
             useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0,
-            buttons: salesRes.suggested_actions?.slice(0, 3)
+            buttons: salesRes.suggested_actions?.slice(0, 2) // MAX 2 BUTTONS
+        };
+        if (salesRes.show_image_url) await sendWhatsAppImage(from, salesRes.show_image_url, "");
+    } else {
+        const salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts));
+
+        // --- NEW: LIST MESSAGE SUPPORT ---
+        if (salesRes.useList && salesRes.listData && salesRes.listData.rows.length > 0) {
+            console.log("📜 Sending List Message Response");
+
+            // Limit to 10 items (WhatsApp Max)
+            const rows = salesRes.listData.rows.slice(0, 10).map(r => ({
+                id: r.id || r.title.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+                title: r.title.substring(0, 24), // Max 24 chars allowed by WhatsApp for Title
+                description: r.description?.substring(0, 72) || "" // Max 72 chars
+            }));
+
+            await sendListMessage(from, {
+                header: "Menú Yoko Poke",
+                body: salesRes.text || "Selecciona una opción del menú:",
+                footer: "Toca el botón para ver más 👇",
+                buttonText: "Ver Opciones",
+                sections: [
+                    {
+                        title: salesRes.listData.title || "Productos",
+                        rows: rows
+                    }
+                ]
+            });
+            return; // Stop here, list sent
+        }
+
+        // Fallback to text/buttons
+        response = {
+            text: salesRes.text,
+            useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0,
+            buttons: salesRes.suggested_actions?.slice(0, 2) // MAX 2 BUTTONS
         };
         if (salesRes.show_image_url) await sendWhatsAppImage(from, salesRes.show_image_url, "");
     }
+
+    // --- ADD DELAY FOR NATURAL FEEL ---
+    // User feedback: Delay causes out-of-order messages (Image arrives before Text because Image is sent inside block, text is buffered).
+    // REMOVED to ensure synchronous delivery.
+    // await new Promise(resolve => setTimeout(resolve, 4000));
 
     await sendWhatsApp(from, response);
 }
@@ -707,51 +803,15 @@ export async function processMessage(from: string, text: string): Promise<void> 
 async function handleInstantKeywords(from: string, text: string, session: any): Promise<BotResponse | null> {
     const lowerText = text.toLowerCase();
 
-    // ⚡ PRIORITY 1: FLOW TRIGGER (Armar Poke) - ALWAYS ALLOW THIS TO RESET
+    // ⚡ PRIORITY 1: FLOW TRIGGER (Armar Poke) - REDIRECT TO WEB
     if (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke'))) {
-        console.log("🌊 Triggering Builder (List Mode) for:", text);
+        console.log("🌊 Triggering Web Redirect for Armar Poke");
 
-        /* 
-        // FLOW DISABLED: Meta Integrity Check Fails
-        const flowId = "1380671310524592"; 
-        if (flowId) {
-            const success = await sendFlowMessage(from, flowId, "SIZE_SELECTION", "Armar Poke");
-            if (success) return { text: "" };
-        }
-        */
-
-        // Standard List Message Logic (Primary)
-        const success = await sendListMessage(from, {
-            header: "🥗 Arma tu Poke Perfecto",
-            body: "Elige el tamaño de tu Poke Clásico:",
-            footer: "Yoko Poke",
-            buttonText: "Ver tamaños",
-            sections: [{
-                title: "Tamaños disponibles",
-                rows: [
-                    {
-                        id: "poke-mediano",
-                        title: "Poke Mediano 🥗",
-                        description: "$120 - 1 proteína"
-                    },
-                    {
-                        id: "poke-grande",
-                        title: "Poke Grande 🍱",
-                        description: "$140 - 1 proteína"
-                    }
-                ]
-            }]
-        });
-
-        if (!success) {
-            return {
-                text: "¡Va! ¿De qué tamaño lo quieres? 🥣",
-                useButtons: true,
-                buttons: ['Poke Mediano', 'Poke Grande']
-            };
-        }
-
-        return { text: "" }; // HANDLED
+        return {
+            text: "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nPara elegir cada ingrediente a tu gusto y verlo en tiempo real, entra a nuestro *Constructor Interactivo* aquí:\n\n👉 https://yokopoke.mx/#product-selector\n\n¡Es súper fácil y rápido! 🚀",
+            useButtons: true,
+            buttons: ['Ver Menú de la Casa']
+        };
     }
 
     // 0. If in Builder Mode (and NOT resetting), DISABLE other Fast Pass triggers
@@ -863,13 +923,12 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
 
     // 4. Direct Size (Text OR List ID)
     if (['poke mediano', 'poke grande', 'poke-mediano', 'poke-grande'].includes(lowerText)) {
-        const slug = lowerText.includes('mediano') ? 'poke-mediano' : 'poke-grande';
-
-        // RESET SESSION to ensure we start fresh
-        await clearSession(from);
-
-        await startBuilder(from, slug);
-        return { text: "" }; // HANDLED
+        // REDIRECT TO WEB
+        return {
+            text: "🥗 *¡Excelente elección!* ✨\n\nPara personalizar tu Poke justo como te gusta, entra a nuestro *Constructor Interactivo* aquí:\n\n👉 https://yokopoke.mx/#product-selector\n\n¡Ahí puedes elegir cada ingrediente! 🚀",
+            useButtons: true,
+            buttons: ['Ver Menú de la Casa']
+        };
     }
 
     // 5. Greetings + Colloquial
@@ -1232,7 +1291,14 @@ if (import.meta.main) {
                     text = message.text.body;
                 } else if (message.type === 'interactive') {
                     if (message.interactive.type === 'button_reply') {
-                        text = message.interactive.button_reply.id;
+                        // Use Title for Natural Language Processing if ID is internal (btn_X)
+                        // This allows AI to "hear" the button text (e.g. "Pink Lemonade")
+                        const btnId = message.interactive.button_reply.id;
+                        if (btnId.startsWith('btn_')) {
+                            text = message.interactive.button_reply.title;
+                        } else {
+                            text = btnId;
+                        }
                     } else if (message.interactive.type === 'list_reply') {
                         text = message.interactive.list_reply.id;
                     } else if (message.interactive.type === 'nfm_reply') {
