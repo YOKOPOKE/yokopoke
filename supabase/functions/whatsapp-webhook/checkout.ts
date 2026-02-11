@@ -354,9 +354,10 @@ export async function handleCheckoutFlow(
         const { items } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
 
         // --- PRE-ORDER CHECK ---
+        const { open } = await getBusinessHours();
         const mxTime = new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" });
         const currentHour = new Date(mxTime).getHours();
-        const isPreOrder = currentHour < 14;
+        const isPreOrder = currentHour < open;
 
         const orderData = {
             customer_name: checkout.customerName,
@@ -405,8 +406,9 @@ export async function handleCheckoutFlow(
 
         // --- CONFIRMATION MESSAGE ---
         if (isPreOrder) {
+            const openTimeStr = `${open > 12 ? open - 12 : open}:00 ${open >= 12 ? 'PM' : 'AM'}`;
             return {
-                text: `🔒 * PRE - ORDEN GUARDADA * 🔒\n\nTu pedido ha sido registrado con éxito para el turno de la tarde.\n\n⏰ * A las 2:00 PM te enviaremos un mensaje * para confirmar que empezamos a cocinar.\n\n¡Gracias por la espera, ${checkout.customerName} ! 🍣⏳`,
+                text: `🔒 *PRE-ORDEN GUARDADA* 🔒\n\nTu pedido ha sido registrado con éxito para el turno de la tarde.\n\n⏰ *A las ${openTimeStr} te enviaremos un mensaje* para confirmar que empezamos a cocinar.\n\n¡Gracias por la espera, ${checkout.customerName}! 🍣⏳`,
                 useButtons: true,
                 buttons: ['Ver Menú']
             };
