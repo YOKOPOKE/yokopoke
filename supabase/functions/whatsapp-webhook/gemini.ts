@@ -7,6 +7,27 @@ const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 // Use 'gemini-3-pro-preview' for maximum reasoning and sales capability (User Request - 2026)
 const model = genAI ? genAI.getGenerativeModel({ model: "gemini-3-pro-preview" }) : null;
 
+// Helper for Robustness
+async function generateContentWithRetry(input: any, retries = 2): Promise<any> {
+    if (!model) throw new Error("Model not initialized");
+
+    for (let i = 0; i <= retries; i++) {
+        try {
+            return await model.generateContent(input);
+        } catch (e: any) {
+            console.warn(`⚠️ Gemini API Error (Attempt ${i + 1}/${retries + 1}):`, e.message);
+
+            // Don't retry client errors (4xx) usually, but kept simple for now.
+            // If it's the last attempt, throw.
+            if (i === retries) throw e;
+
+            // Exponential Backoff: 500ms, 1000ms, 2000ms
+            const delay = 500 * Math.pow(2, i);
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+}
+
 /**
  * Interprets user selection using advanced logic (Slang, context, implicit)
  */
@@ -40,9 +61,11 @@ export async function interpretSelection(
         OUTPUT: Return ONLY a JSON array of numbers. Example: [101, 102].
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await generateContentWithRetry(prompt);
         const text = result.response.text();
-        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        // Robust JSON extraction: Find first { and last }
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const cleanText = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, '').replace(/```/g, '').trim();
         const ids = JSON.parse(cleanText);
 
         return Array.isArray(ids) ? ids : [];
@@ -81,7 +104,7 @@ export async function generateConversationalResponse(
     - Briefly acknowledge what they have so far (e.g. "Excellent with the Base and Protein!").
     - If user has NOT reached included limit: "Te falta elegir X más (incluidos)."
     - If user HAS reached included limit but can add more: "¡Listo! ¿Quieres agregar algo más (costo extra) o seguimos?" DO NOT say "Te faltan X". Allow them to stop.
-
+    
     TASK: Write a short message (max 160 chars) confirming the selection and guiding to the next step.
     - If they picked a premium item, compliment it ("¡Uff, gran elección con el Salmón! 🐟").
     - Create craving for the next step ("Ahora, vamos a darle color con los *${nextStepLabel}*").
@@ -91,7 +114,7 @@ export async function generateConversationalResponse(
     `;
 
     try {
-        const result = await model.generateContent(prompt);
+        const result = await generateContentWithRetry(prompt);
         return result.response.text().trim();
     } catch (e) {
         return `✅ Listo, agregamos: ${currentSelections.join(', ')}.\nAhora vamos con *${nextStepLabel}*.`;
@@ -100,17 +123,20 @@ export async function generateConversationalResponse(
 
 export async function analyzeIntent(
     userText: string,
-    history: string[] = [] // Optional history
+    history: string[] = [],
+    cart: any[] = [] // NEW: Cart Context
 ): Promise<{ intent: string, entities: any }> {
     if (!model) return { intent: 'unknown', entities: {} };
 
     const historyContext = history.length > 0 ? `HISTORIAL DE CONVERSACIÓN:\n${history.map(m => `- ${m}`).join('\n')}\n` : "";
+    const cartContext = cart.length > 0 ? `CARRITO ACTUAL (${cart.length} items): ${cart.map(i => i.name).join(', ')}` : "CARRITO VACÍO";
 
     // Robust Intent Prompt
     const prompt = `
-    Eres un asistente de ventas experto para Yoko Poke. Analiza el ÚLTIMO mensaje del usuario teniendo en cuenta el historial.
+    Eres un asistente de ventas experto para Yoko Poke. Analiza el ÚLTIMO mensaje del usuario.
 
     ${historyContext}
+    ${cartContext}
     MENSAJE ACTUAL DEL USUARIO: "${userText}"
     
     Tus objetivos son:
@@ -122,28 +148,39 @@ export async function analyzeIntent(
        - Productos fijos: "Pokes de la Casa" (Spicy Tuna, Yoko Especial, etc), "Bebidas", "Postres", "Entradas".
        - Si dice "dame un spicy tuna" -> ADD_TO_CART.
        - Si dice "spicy tuna" (nombre exacto del producto) -> ADD_TO_CART.
-       - Si dice "tienes pokes de la casa?" -> CATEGORY_FILTER.
+       - Si dice "y también unas gyozas" (CONTEXTO: ya pidió algo) -> ADD_TO_CART.
 
-    3. Detectar preguntas informativas (INFO) o estatus de pedido (STATUS).
-    
+    3. Detectar si quiere VER UNA CATEGORÍA o EL MENÚ (CATEGORY_FILTER).
+       - Si dice "ver menú", "la carta", "qué tienes": CATEGORY_FILTER (sin keyword).
+       - Si dice "ver bebidas", "postres", "entradas": CATEGORY_FILTER (keyword="bebida", "postre").
+       
+    4. Detectar PREGUNTAS ABIERTAS o SOLICITUD DE RECOMENDACIONES (CHAT).
+       - Si dice "¿qué me recomiendas?", "algo rico", "no sé qué pedir": CHAT.
+       - Si dice "algo de beber" (sin especificar, pidiendo sugerencia): CHAT (para que el Bot venda).
+       - Si dice "cuales son los ingredientes del Spicy Tuna?": CHAT/INFO.
+
+    5. Detectar si quiere FINALIZAR PEDIDO (CHECKOUT).
+       - Keywords: "finalizar", "pagar", "confirmar", "checkout", "ya está", "eso es todo".
+       - SI TIENE ITEMS EN EL CARRITO y dice "listo" o "ya", es CHECKOUT.
+       
     Salida JSON esperada:
     {
-        "intent": "START_BUILDER" | "ADD_TO_CART" | "CATEGORY_FILTER" | "INFO" | "STATUS" | "CHAT",
+        "intent": "START_BUILDER" | "ADD_TO_CART" | "CATEGORY_FILTER" | "INFO" | "STATUS" | "CHAT" | "CHECKOUT",
         "product_hint": string | null, // Ej: "coca cola", "spicy tuna", "mediano"
         "category_keyword": string | null // Ej: "bebida", "postre"
     }
     `;
 
     try {
-        const result = await model.generateContent(prompt);
-        const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(text);
+        const result = await generateContentWithRetry(prompt);
+        const text = result.response.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const cleanText = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanText);
     } catch (e) {
         return { intent: 'unknown', entities: {} };
     }
 }
-
-
 
 export interface SalesResponse {
     text: string;
@@ -154,6 +191,11 @@ export interface SalesResponse {
         title: string;
         rows: Array<{ id: string, title: string, description: string }>;
     };
+    // NEW: Action to perform on the server state
+    server_action?: {
+        type: "ADD_TO_CART";
+        product: { id: string, name: string, price: number, quantity: number };
+    };
 }
 
 /**
@@ -162,7 +204,8 @@ export interface SalesResponse {
 export async function generateSalesResponse(
     userText: string,
     menuContext: string,
-    productList: any[] // Pass full products to find images
+    productList: any[],
+    cart: any[] = [] // NEW: Cart Context
 ): Promise<SalesResponse> {
     if (!model) return { text: "¡Hola! ¿En qué te puedo ayudar hoy? 🥗" };
 
@@ -171,72 +214,140 @@ export async function generateSalesResponse(
         .map(p => `Product: "${p.name}" -> ImageURL: "${p.image_url}"`)
         .join("\n");
 
+    const cartDescription = cart.length > 0
+        ? `User has in cart: ${cart.map(c => c.name).join(', ')}.`
+        : "Cart is empty.";
+
     // Sales Prompt
     const prompt = `
     ACT AS: "Yoko Bot", the best waiter at Yoko Poke.
     GOAL: SELL. Be helpful, persuasive, and VISUAL.
     
-    MENU AVAILABLE:
+    MENU:
     ${menuContext}
     
-    IMAGES AVAILABLE (Use these URLs if explicitly asked or if recommending a specific hero product):
+    IMAGES:
     ${productImagesContext}
     
+    CONTEXT:
+    ${cartDescription}
     USER MESSAGE: "${userText}"
     
     INSTRUCTIONS:
-    1. IF USER ASKS FOR MENU ITEM (e.g. "Spicy Tuna", "Bebidas", "Postre"):
-       - SELL IT! Describe it deliciously using the menu info.
-       - RETURN ITS IMAGE URL in the JSON if available.
-       - **IF USER SAYS "SIN [ingrediente]" or "QUITAR [ingrediente]" or "NO QUIERO [ingrediente]"**:
-         * Acknowledge it warmly: "¡Claro! Lo preparamos sin [ingrediente] para ti. Quedará delicioso. 😊"
-         * EXPLAIN they should use the builder if they want exact customization: "Para armarlo a tu gusto exacto con todos los cambios, usa https://yokopoke.mx/#product-selector"
-         * DO NOT add product to cart if heavy modification is requested.
-       - SUGGEST ordering it ("¿Te lo marcho?", "¡Excelente elección!").
+    1. IF USER ASKS FOR MENU ITEM (e.g. "Spicy Tuna", "Bebidas", "Postre", "Gyozas"):
+       - **CRITICAL**: If they explicitly say "I want X", "Dame X", "Agrega X", you MUST return a "server_action" to add it.
+       - CONFIRM the addition in the text: "¡Listo! Agregué las Gyozas a tu orden. 🥟"
+       - Describe it deliciously.
     
-    2. IF USER WANTS TO CUSTOMIZE/BUILD (e.g. "Make my own", "Swap ingredients", "Armar", "Sin pícate"):
-       - POLITELY REDIRECT to the web builder: https://yokopoke.mx/#product-selector
-       - Say something like: "¡Sin problema! 😊 Para quitar el pícate y armarlo a tu gusto exacto, usa nuestro constructor interactivo aquí: [URL]. ¡Quedará delicioso! 🥣✨".
+    2. IF USER WANTS TO CUSTOMIZE ("Sin cebolla", "Armar"):
+       - Redirect to Web Builder: https://yokopoke.mx/#product-selector
+       - DO NOT start building in chat.
 
     3. IF USER ASKS FOR GENERAL MENU or CATEGORY (e.g. "Show menu", "What drinks?", "Postres"):
        - RETURN A LIST STRUCTURE in the JSON.
        - "listData" must include: title (Category Name), rows (Array of {id: "Product Name", title: "Product Name + Emoji", description: "Price + Short Ingredients"}).
        - Max 10 items per list.
     
-    4. IF USER WANTS TO FINALIZE ORDER ("Finalizar pedido", "Checkout", "Ya está", "Esto es todo"):
-       - Ask for their name in a friendly way: "¡Perfecto! Para procesar tu orden, ¿a qué nombre la dejo?"
-       - NO BUTTONS. Let them type.
+    4. IF USER WANTS TO CHECKOUT ("Finalizar", "Eso es todo"):
+       - Text: "¡Perfecto! ¿A qué nombre registro tu pedido?" (No buttons).
     
-    5. **BUTTON LIMITS**:
-       - ONLY provide "suggested_actions" if ABSOLUTELY NECESSARY (e.g., "Agregar al carrito", "Finalizar pedido").
-       - MAX 2 BUTTONS. No more.
-       - If asking a question, DO NOT use buttons. Let them TYPE.
-       - NEVER suggest "Ver Bebidas", "Ver Postres" buttons unless explicitly relevant.
-    
-    6. Keep text under 200 chars. Use minimal emojis (🥗, 🔥, 😊).
-    7. return JSON ONLY.
-    
-    OUTPUT FORMAT:
+    OUTPUT JSON:
     {
-      "text": "Intro text (e.g. 'Aquí tienes nuestros favoritos 👇')",
-      "show_image_url": "https://... (or null)",
-      "suggested_actions": ["MAX 2 ACTIONS"],
-      "useList": true/false,
-      "listData": {
-        "title": "Sección del Menú",
-        "rows": [
-          { "id": "spicy_tuna", "title": "🌶️ Spicy Tuna", "description": "$160 - Atún, pepino, spicy mayo" }
-        ]
-      }
+      "text": "Response text",
+      "show_image_url": "URL or null",
+      "suggested_actions": ["MAX 2"],
+      "server_action": {
+          "type": "ADD_TO_CART",
+          "product": { "id": "slug", "name": "Name", "price": 120, "quantity": 1 }
+      } (OR null)
     }
     `;
 
     try {
-        const result = await model.generateContent(prompt);
-        const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(text);
+        const result = await generateContentWithRetry(prompt);
+        const text = result.response.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const cleanText = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanText);
     } catch (e) {
         console.error("Gemini Sales Error:", e);
         return { text: "¡Hola! Se me antojó un Poke. ¿Quieres ver el menú o armar uno? 🥗" };
+    }
+}
+
+/**
+ * Transcribes Audio (Voice Notes) into Text using Gemini Multimodal
+ */
+export async function transcribeAudio(audio: { mimeType: string; data: string }): Promise<string> {
+    if (!model) return "";
+
+    try {
+        const result = await generateContentWithRetry([
+            {
+                inlineData: {
+                    mimeType: audio.mimeType,
+                    data: audio.data
+                }
+            },
+            { text: "Transcribe este audio exactamente como fue dicho. Retorna SOLO el texto plano, sin comentarios ni formato." }
+        ]);
+
+        return result.response.text().trim();
+    } catch (e) {
+        console.error("Audio Transcription Error:", e);
+        return ""; // Fallback to empty (will be handled as empty message)
+    }
+}
+
+/**
+ * Generate Personalized Greeting based on Order History (Premium UX)
+ */
+export async function generatePersonalizedGreeting(
+    customerPhone: string,
+    orderHistory: Array<{ items: Array<{ name: string; quantity: number }>, order_date: string }>
+): Promise<string> {
+    if (!model) return "¡Hola! Bienvenido a Yoko Poke 🥗";
+
+    try {
+        let historyContext = "";
+
+        if (orderHistory.length > 0) {
+            // Extract item names from history
+            const allItems = orderHistory.flatMap(order =>
+                order.items.map(item => item.name)
+            );
+            const favoriteItems = [...new Set(allItems)].slice(0, 3).join(", ");
+
+            const lastOrderDate = new Date(orderHistory[0].order_date).toLocaleDateString('es-MX');
+
+            historyContext = `
+CONTEXTO: Cliente que regresa.
+- Última orden: ${lastOrderDate}
+- Ha pedido: ${favoriteItems}
+
+TAREA: Genera un saludo cálido (máximo 2 líneas) que:
+1. Mencione que es bueno verlo de nuevo
+2. Haga referencia sutil a lo que pidió antes
+3. Sugiera repetir o probar algo nuevo
+
+Ejemplo: "¡Hola de nuevo! 😊 La vez pasada el Spicy Tuna te encantó, ¿repetimos o probamos el Yoko Especial?"
+`;
+        } else {
+            historyContext = `
+CONTEXTO: Cliente nuevo
+
+TAREA: Genera un saludo de bienvenida entusiasta (máximo 2 líneas):
+Ejemplo: "¡Bienvenido a Yoko Poke! 🥗 ¿Qué se te antoja hoy? ¿Armar tu poke o ver nuestros favoritos?"
+`;
+        }
+
+        const result = await generateContentWithRetry(historyContext);
+        const greeting = result.response.text().trim();
+
+        return greeting || "¡Hola! ¿Qué se te antoja hoy? 🥗";
+
+    } catch (e) {
+        console.error("Personalized Greeting Error:", e);
+        return "¡Hola! Bienvenido a Yoko Poke 🥗 ¿Qué te preparamos hoy?";
     }
 }

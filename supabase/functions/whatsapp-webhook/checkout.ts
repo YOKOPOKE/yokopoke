@@ -100,17 +100,16 @@ export async function handleCheckoutFlow(
                 buttons: slots.slice(0, 3)
             };
         } else {
-            // Delivery - Go to Summary (or Address if implemented later)
-            checkout.checkoutStep = 'SHOW_SUMMARY';
+            // Delivery - Request Location (Premium UX)
+            checkout.checkoutStep = 'COLLECT_LOCATION';
 
             // Get product to show summary
             const product = await getProductWithSteps(checkout.productSlug);
             if (!product) return { text: "Error: Producto no encontrado." };
 
-            const { total, summary } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
 
             return {
-                text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n📍 *Entrega:* 🚗 Envío a domicilio\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto? Responde *Sí* para confirmar o *Cancelar* para reiniciar.`
+                text: `📍 *Envío a Domicilio*\n\nPara ubicarte mejor, ¿puedes compartir tu ubicación?\n\n👉 Toca el botón de adjuntar (+) y selecciona "Ubicación" 📍`
             };
         }
     }
@@ -158,6 +157,57 @@ export async function handleCheckoutFlow(
             mxDate.setMinutes(mxDate.getMinutes() + interval);
         }
         return slots;
+    }
+
+    // Step 2.5: COLLECT_LOCATION (Fallback for text input)
+    if (checkout.checkoutStep === 'COLLECT_LOCATION') {
+        // If we are here, it means index.ts didn't intercept a 'location' message.
+        // Instead, the user sent TEXT. We accept this text as the address.
+
+        if (text.length < 5) {
+            return {
+                text: "📍 Para envío a domicilio, por favor comparte tu *Ubicación* de WhatsApp (📎) o escribe tu dirección completa."
+            };
+        }
+
+        // Treat text as address
+        checkout.fullAddress = text.trim();
+        // Zero coords since we don't have GPS
+        checkout.location = { latitude: 0, longitude: 0, address: text };
+        checkout.checkoutStep = 'COLLECT_REFERENCES';
+
+        return {
+            text: `📝 Dirección guardada: ${checkout.fullAddress}\n\n¿Alguna referencia para el repartidor?\n(Ej: "Portón blanco", "Junto al Oxxo")`
+        };
+    }
+
+    // Step 3: COLLECT_ADDRESS (for delivery after location)
+    if (checkout.checkoutStep === 'COLLECT_ADDRESS') {
+        if (text.length < 10) {
+            return {
+                text: "⚠️ Por favor proporciona una dirección completa (calle, número, colonia)."
+            };
+        }
+
+        checkout.fullAddress = text.trim();
+        checkout.checkoutStep = 'COLLECT_REFERENCES';
+
+        return {
+            text: `✅ Dirección guardada: ${checkout.fullAddress}\n\n📝 Ahora, ¿alguna referencia para encontrarte?\n(Ej: "Casa azul, portón negro", "Edificio X, Apto 202")`
+        };
+    }
+
+    // Step 4: COLLECT_REFERENCES (delivery instructions)
+    if (checkout.checkoutStep === 'COLLECT_REFERENCES') {
+        checkout.addressReferences = text.trim();
+        checkout.checkoutStep = 'COLLECT_PICKUP_TIME'; // Reuse time slot for delivery ETA
+
+        const slots = generateTimeSlots();
+        return {
+            text: `✅ Referencias guardadas.\n\n🕒 ¿A qué hora te gustaría recibir tu pedido?\n\n${slots.map(s => `• ${s}`).join('\n')}\n\nSelecciona una hora 👇`,
+            useButtons: true,
+            buttons: slots.slice(0, 3)
+        };
     }
 
     // ... inside processCheckoutStep ...
@@ -256,10 +306,18 @@ export async function handleCheckoutFlow(
         if (!product) return { text: "Error: Producto no encontrado." };
 
         const { total, summary } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
-        const deliveryText = `🏪 Recoger: ${selectedTime}`;
+
+        let deliveryText = "";
+        if (checkout.deliveryMethod === 'delivery') {
+            // Show start of address
+            const shortAddr = checkout.fullAddress ? checkout.fullAddress.substring(0, 30) + (checkout.fullAddress.length > 30 ? '...' : '') : 'Ubicación compartida';
+            deliveryText = `🚗 Domicilio\n📍 ${shortAddr}\n🕒 Hora: ${checkout.pickupTime}`;
+        } else {
+            deliveryText = `🏪 Recoger: ${checkout.pickupTime}`;
+        }
 
         return {
-            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n📍 *Entrega:* ${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto? Responde *Sí* para confirmar o *Cancelar* para reiniciar.`
+            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto? Responde *Sí* para confirmar o *Cancelar* para reiniciar.`
         };
     }
 
@@ -311,6 +369,29 @@ export async function handleCheckoutFlow(
             return {
                 text: "⚠️ Hubo un error al procesar tu orden. Por favor intenta de nuevo."
             };
+        }
+
+        // --- SAVE TO HISTORY FOR RECOMMENDATIONS (Robustness) ---
+        try {
+            const { saveOrderToHistory } = await import('./orderHistoryService.ts');
+            await saveOrderToHistory({
+                phone: from,
+                customer_name: checkout.customerName,
+                items: [{
+                    id: String(product.slug || product.id),
+                    name: product.name,
+                    price: checkout.totalPrice,
+                    quantity: 1
+                }],
+                total: checkout.totalPrice,
+                delivery_method: checkout.deliveryMethod,
+                location: checkout.location, // GPS
+                full_address: checkout.fullAddress,
+                address_references: checkout.addressReferences
+            });
+        } catch (histError) {
+            console.error("Non-fatal error saving history:", histError);
+            // Don't fail the order for this
         }
 
         return {

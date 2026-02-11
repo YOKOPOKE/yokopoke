@@ -16,19 +16,62 @@ export interface CheckoutState {
     totalPrice: number;
     customerName?: string;
     deliveryMethod?: 'pickup' | 'delivery';
-    checkoutStep: 'COLLECT_NAME' | 'COLLECT_DELIVERY' | 'COLLECT_ADDRESS' | 'COLLECT_PICKUP_TIME' | 'SHOW_SUMMARY' | 'CONFIRMATION';
+    checkoutStep: 'COLLECT_NAME' | 'COLLECT_DELIVERY' | 'COLLECT_LOCATION' | 'COLLECT_ADDRESS' | 'COLLECT_REFERENCES' | 'COLLECT_PICKUP_TIME' | 'SHOW_SUMMARY' | 'CONFIRMATION';
     pickupTime?: string;
-    address?: string;
+    address?: string; // Legacy field, will be replaced by fullAddress
     flowData?: any; // Store data from Flow
+
+    // NEW: Location & Address for Premium Delivery
+    location?: {
+        latitude: number;
+        longitude: number;
+        address?: string; // From WhatsApp if provided
+    };
+    fullAddress?: string; // "Calle X #123, Colonia Y"
+    addressReferences?: string; // "Casa azul, portón negro"
 }
 
 export interface SessionData {
-    mode: 'NORMAL' | 'BUILDER' | 'CHECKOUT';
+    mode: 'NORMAL' | 'BUILDER' | 'CHECKOUT' | 'PAUSED';
     builderState?: BuilderState;
     checkoutState?: CheckoutState;
     lastInteraction: number;
-    pendingMessages?: string[];
+
+    // CONCURRENCY & ROBUSTNESS
+    processingStart?: number; // Timestamp when lock was acquired
+    isProcessing?: boolean;   // Mutex lock
+    pendingMessages?: {       // Message Queue
+        text: string;
+        type: 'text' | 'audio' | 'image' | 'location';
+        timestamp: number;
+        payload?: any;        // For location/media data
+    }[]; // Queue of incoming messages
+
+    // ERROR TRACKING
+    errorCount?: number;      // Circuit breaker for session resets
+    lastError?: string;       // Debug info
+
+    // RATE LIMITING
+    rateLimit?: {
+        points: number;       // Remaining quota (e.g. 20)
+        lastReset: number;    // Timestamp of last refill
+    };
+
+    // HUMAN MODE
+    pausedUntil?: number;
+
+    // PERSISTENCE (The Memory)
+    cart?: Array<{
+        id: string; // SKU or Slug
+        name: string;
+        price: number;
+        quantity: number;
+        customization?: string; // "Sin cebolla", "Extra spicy"
+    }>;
+
+    // Legacy / Other
     bufferUntil?: number;
+    activeThreadId?: string;
 }
 
 export async function getSession(phone: string): Promise<SessionData> {

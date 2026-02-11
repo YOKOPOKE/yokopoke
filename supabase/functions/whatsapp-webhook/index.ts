@@ -69,12 +69,28 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
         return null;
     }
 
-    // Default Greeting
-    return {
-        text: "¡Konnichiwa! 🎌 Bienvenido a *Yoko Poke* 🥣\n\nSoy *POKI*, tu asistente personal 🤖✨.\n\nEstoy aquí para tomar tu orden volando 🚀. Puedes pedirme lo que quieras por chat o ordenar en nuestra página \n🌐 https://yokopoke.mx\n\n¿Qué se te antoja probar hoy? 🥢",
-        useButtons: true,
-        buttons: ['Ver Menú']
-    };
+    // Personalized Greeting (Premium UX)
+    try {
+        const { getOrderHistory } = await import('./orderHistoryService.ts');
+        const { generatePersonalizedGreeting } = await import('./gemini.ts');
+
+        const history = await getOrderHistory(context.from, 5);
+        const greeting = await generatePersonalizedGreeting(context.from, history as any);
+
+        return {
+            text: greeting + "\n\n🌐 https://yokopoke.mx",
+            useButtons: true,
+            buttons: ['Ver Menú']
+        };
+    } catch (e) {
+        console.error("Error generating personalized greeting:", e);
+        // Fallback Greeting
+        return {
+            text: "¡Konnichiwa! 🎌 Bienvenido a *Yoko Poke* 🥣\n\nSoy *POKI*, tu asistente personal 🤖✨.\n\nEstoy aquí para tomar tu orden volando 🚀. Puedes pedirme lo que quieras por chat o ordenar en nuestra página \n🌐 https://yokopoke.mx\n\n¿Qué se te antoja probar hoy? 🥢",
+            useButtons: true,
+            buttons: ['Ver Menú']
+        };
+    }
 }
 
 
@@ -544,7 +560,83 @@ export async function processMessage(from: string, text: string): Promise<void> 
     /* DEBOUNCE LOGIC WITH FAST PASS EXCEPTION */
     let session = await getSession(from);
     const now = Date.now();
-    const lowerText = text.toLowerCase();
+
+    // --- HUMAN MODE (The "Pausa" Button) ---
+    const lowerText = text.toLowerCase().trim();
+
+    // 1. Activation (Resume)
+    if (lowerText === 'reanudar' || lowerText === 'bot' || lowerText === 'activar' || lowerText === 'modo bot') {
+        if (session.mode === 'PAUSED') {
+            session.mode = 'NORMAL';
+            session.pausedUntil = undefined;
+            await updateSession(from, session);
+            await sendWhatsApp(from, { text: "▶️ ¡Hola de nuevo! El Bot está activo. 🤖" });
+            return;
+        }
+    }
+
+    // 2. Deactivation (Pause)
+    if (lowerText === 'pausa' || lowerText === 'agente' || lowerText === 'humano' || lowerText === 'silencio') {
+        if (session.mode !== 'PAUSED') {
+            session.mode = 'PAUSED';
+            session.pausedUntil = now + (3600 * 1000); // 1 hour safety timeout
+            await updateSession(from, session);
+            await sendWhatsApp(from, { text: "⏸️ Bot pausado. Un humano te atenderá pronto. (Escribe 'Bot' para reactivarme)." });
+            return;
+        }
+    }
+
+    // 3. Silence Check
+    if (session.mode === 'PAUSED') {
+        console.log(`🤐 Ignored message from ${from} (Bot Paused)`);
+        return;
+    }
+    // --- RATE LIMITING (God Level Safety) ---
+    // Protect against spam/DDOS (Max 20 msgs/min)
+    const rateNow = Date.now();
+    if (!session.rateLimit) {
+        session.rateLimit = { points: 20, lastReset: rateNow };
+    }
+    // Refill bucket every 60s
+    if (rateNow - session.rateLimit.lastReset > 60000) {
+        session.rateLimit.points = 20;
+        session.rateLimit.lastReset = rateNow;
+    }
+    // Consume Token
+    if (session.rateLimit.points <= 0) {
+        console.warn(`🛑 Rate Limit HIT for ${from}. Ignoring.`);
+        return;
+    }
+    session.rateLimit.points--;
+    // Persist limit state immediately
+    await updateSession(from, session);
+
+
+    // --- BUSINESS HOURS CHECK (Premium UX) ---
+    // Restaurant opens at 2pm Comitán time (America/Mexico_City)
+    try {
+        const comitenTime = new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' });
+        const comitenDate = new Date(comitenTime);
+        const currentHour = comitenDate.getHours(); // 0-23
+
+        // Open only after 14:00 (2pm)
+        if (currentHour < 14) {
+            console.log(`🔒 Restaurant closed (${currentHour}:00 < 14:00) for ${from}`);
+
+            // Allow basic info queries but block orders
+            if (lowerText.includes('menú') || lowerText.includes('menu') || lowerText.includes('hora') || lowerText.includes('ubicación')) {
+                // Let it continue for info only
+            } else {
+                await sendWhatsApp(from, {
+                    text: `😴 Aún no abrimos! Regresamos a las 2pm.\n\n¿Te guardo tu pedido para cuando abramos? Escribe "Sí" y te recordaré. 🌸`
+                });
+                return;
+            }
+        }
+    } catch (e) {
+        console.error("Error checking business hours:", e);
+        // Continue normally if timezone check fails
+    }
 
     // ⚡ FAST PASS & BUILDER CHECK
     // Priority 1: Instant Keywords (Sales, Greetings & Colloquial)
@@ -586,215 +678,436 @@ export async function processMessage(from: string, text: string): Promise<void> 
         return;
     }
 
-    // Initialize if needed
+    // --- ROBUST CONCURRENCY (Senior Implementation) ---
+    // 1. Add to DB Queue securely
     if (!session.pendingMessages) session.pendingMessages = [];
+    session.pendingMessages.push({
+        text: text,
+        type: 'text', // Simplification: Primary text flow
+        timestamp: Date.now()
+    });
 
-    // DIRECT PROCESSING (Buffer Removed by User Request)
-    const aggregatedText = text;
-    console.log(`🔥 Processing instantly: "${aggregatedText}"`);
+    // 2. Watchdog: Break Stale Locks (>30s)
+    if (session.isProcessing && session.processingStart && (Date.now() - session.processingStart > 30000)) {
+        console.warn(`🐕 Watchdog: Breaking stale lock for ${from}`);
+        session.isProcessing = false;
+    }
 
-    // Reset buffer vars just in case
-    session.pendingMessages = [];
-    session.bufferUntil = 0;
-
-    // --- BUILDER FLOW (Buffered) ---
-    if (session.mode === 'BUILDER' && session.builderState) {
-        console.log(`🏗 Processing Builder Flow for ${from} (Buffered)`);
-        const response = await handleBuilderFlow({ from, text: aggregatedText, timestamp: now }, session, aggregatedText);
-        await sendWhatsApp(from, response);
+    // 3. Check Lock (Non-blocking return)
+    if (session.isProcessing) {
+        console.log(`🔒 Session locked for ${from}. Queued message.`);
+        await updateSession(from, session);
         return;
     }
 
-    // --- CHECKOUT FLOW ---
-    if (session.mode === 'CHECKOUT' && session.checkoutState) {
-        console.log(`💳 Processing Checkout Flow for ${from}`);
-        const { handleCheckoutFlow } = await import('./checkout.ts');
-        const response = await handleCheckoutFlow(from, aggregatedText, session);
+    // 4. Acquire Lock
+    session.isProcessing = true;
+    session.processingStart = Date.now();
+    await updateSession(from, session);
 
-        // Clear session if checkout completed or cancelled
-        if (response.text.includes('ORDEN CONFIRMADA') || response.text.includes('cancelada')) {
-            await clearSession(from);
-        } else {
-            await updateSession(from, session);
+    // 5. Short Debounce (Allow rapid-fire messages to accumulate)
+    await new Promise(r => setTimeout(r, 1500));
+
+    // 6. Fetch Aggregate Payload
+    let workSession = await getSession(from);
+    const queue = workSession.pendingMessages || [];
+
+    // Sort by timestamp (FIFO)
+    queue.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Filter duplicates (De-bounce)
+    const uniqueQueue = queue.filter((item, index, self) =>
+        index === 0 || item.text !== self[index - 1].text
+    );
+
+    // Join Texts
+    const aggregatedText = uniqueQueue.map(q => q.text).join(". ");
+
+    console.log(`🔥 Processing Batch (${uniqueQueue.length}): "${aggregatedText}"`);
+
+    // 7. Clear Queue but Keep Lock
+    workSession.pendingMessages = [];
+    workSession.lastInteraction = Date.now();
+
+    // Pass control to main logic with updated session
+    session = workSession;
+    // session.isProcessing is still true, will be cleared at end of logic
+
+
+    // --- DETERMINISTIC ROUTER (THE "CEREBELLUM") ---
+    try {
+        // A. MODE-BASED ROUTING (Highest Priority)
+        // If we are in a specific mode, we stay there until explicitly exited.
+
+        // 1. BUILDER MODE
+        if (session.mode === 'BUILDER' && session.builderState) {
+            console.log(`🏗 Processing Builder Flow for ${from}`);
+            const response = await handleBuilderFlow({ from, text: aggregatedText, timestamp: now }, session, aggregatedText);
+            await sendWhatsApp(from, response);
         }
 
-        await sendWhatsApp(from, response);
-        return;
-    }
+        // 2. CHECKOUT MODE
+        else if (session.mode === 'CHECKOUT' && session.checkoutState) {
+            console.log(`💳 Processing Checkout Flow for ${from}`);
 
-    // AI SALES / FALLBACK logic
-
-    // --- IGNORE INTERNAL BUTTON IDS ---
-    // If text starts with 'btn_', it's an unhandled button click from a flow we might not have caught.
-    // Or it might be a race condition. AI shouldn't try to answer "btn_0".
-    if (text.startsWith('btn_')) {
-        console.log(`🤖 Ignoring internal button ID: ${text}`);
-        return;
-    }
-
-    const prodService = await import('./productService.ts');
-
-    // --- CATEGORY SELECTION HANDLER (cat_ID) ---
-    if (text.startsWith('cat_')) {
-        console.log("📂 Category Selected:", text);
-        const catIdStr = text.replace('cat_', '');
-        const catId = parseInt(catIdStr);
-
-        if (!isNaN(catId)) {
-            const products = await prodService.getProductsByCategory(catId);
-            const categories = await prodService.getCategories();
-            const currentCat = categories.find(c => c.id === catId);
-            const catName = currentCat ? currentCat.name : "Productos";
-
-            console.log(`🔎 LOOKUP: CatID=${catId}, FoundCat=${currentCat?.name} (ID: ${currentCat?.id}), ProductsFound=${products.length}`);
-            if (products.length === 0) {
-                // Debug: what categories DO we have?
-                console.log("DEBUG: All Categories:", JSON.stringify(categories));
-                // Debug: check all products to see if any match this category ID?
-                const allProds = await prodService.getAllProducts();
-                // Filter manually to see if DB query is being weird or strict
-                const matching = allProds.filter(p => p.category_id === catId);
-                console.log(`DEBUG: JS Filter Check - Products with category_id=${catId}: ${matching.length}`);
-                console.log("DEBUG: Sample Product:", JSON.stringify(allProds[0]));
+            // Check for Exit Keywords
+            if (aggregatedText.toLowerCase().includes('cancelar') || aggregatedText.toLowerCase().includes('salir')) {
+                await clearSession(from);
+                await sendWhatsApp(from, { text: "🚫 Checkout cancelado. ¿Qué se te antoja ahora?" });
+                return;
             }
 
-            if (products.length > 0) {
-                // Build Product List
-                const rows = products.slice(0, 10).map(p => ({
-                    id: `${p.name}`, // Use Name for seamless AI flow
-                    title: p.name.substring(0, 24),
-                    description: `$${p.base_price} - ${p.description ? p.description.substring(0, 60) : ''}`
-                }));
+            const { handleCheckoutFlow } = await import('./checkout.ts');
+            const response = await handleCheckoutFlow(from, aggregatedText, session);
 
-                console.log(`📜 Sending List for Category: ${catName}, Rows: ${rows.length}`);
+            // Clear session if checkout completed or cancelled
+            if (response.text.includes('ORDEN CONFIRMADA') || response.text.includes('cancelada')) {
+                await clearSession(from);
+            } else {
+                await updateSession(from, session);
+            }
+
+            await sendWhatsApp(from, response);
+        }
+
+        // B. GENERAL AI / KEYWORD LOGIC (Normal Mode)
+        // Only reaches here if NOT in a special mode.
+        else {
+            // ... (Fallthrough to existing AI logic below) ...
+
+            // --- IGNORE INTERNAL BUTTON IDS ---
+            // If text starts with 'btn_', it's an unhandled button click from a flow we might not have caught.
+            // Or it might be a race condition. AI shouldn't try to answer "btn_0".
+            if (text.startsWith('btn_')) {
+                console.log(`🤖 Ignoring internal button ID: ${text}`);
+                return;
+            }
+
+            const prodService = await import('./productService.ts');
+
+            // --- CATEGORY SELECTION HANDLER (cat_ID) ---
+            if (text.startsWith('cat_')) {
+                console.log("📂 Category Selected:", text);
+                const catIdStr = text.replace('cat_', '');
+                const catId = parseInt(catIdStr);
+
+                if (!isNaN(catId)) {
+                    const products = await prodService.getProductsByCategory(catId);
+                    const categories = await prodService.getCategories();
+                    const currentCat = categories.find(c => c.id === catId);
+                    const catName = currentCat ? currentCat.name : "Productos";
+
+                    console.log(`🔎 LOOKUP: CatID=${catId}, FoundCat=${currentCat?.name} (ID: ${currentCat?.id}), ProductsFound=${products.length}`);
+                    if (products.length === 0) {
+                        // Debug: what categories DO we have?
+                        console.log("DEBUG: All Categories:", JSON.stringify(categories));
+                        // Debug: check all products to see if any match this category ID?
+                        const allProds = await prodService.getAllProducts();
+                        // Filter manually to see if DB query is being weird or strict
+                        const matching = allProds.filter(p => p.category_id === catId);
+                        console.log(`DEBUG: JS Filter Check - Products with category_id=${catId}: ${matching.length}`);
+                        console.log("DEBUG: Sample Product:", JSON.stringify(allProds[0]));
+                    }
+
+                    if (products.length > 0) {
+                        // Build Product List
+                        const rows = products.slice(0, 10).map(p => ({
+                            id: `${p.name}`, // Use Name for seamless AI flow
+                            title: p.name.substring(0, 24),
+                            description: `$${p.base_price} - ${p.description ? p.description.substring(0, 60) : ''}`
+                        }));
+
+                        console.log(`📜 Sending List for Category: ${catName}, Rows: ${rows.length}`);
+
+                        await sendListMessage(from, {
+                            header: `📂 ${catName}`,
+                            body: `Aquí tienes nuestros ${catName}. ¿Cuál se te antoja?`,
+                            footer: "Yoko Poke",
+                            buttonText: "Ver Productos",
+                            sections: [{
+                                title: catName,
+                                rows: rows
+                            }]
+                        });
+                        return;
+                    } else {
+                        console.log(`⚠️ ERROR: No products found for category ${catName} (ID: ${catId})`);
+
+                        // Deep Debug: Output Category ID map
+                        const allProds = await prodService.getAllProducts();
+                        const debugMap = allProds.map(p => `[${p.id}] ${p.name} -> CatID: ${p.category_id}`).join('\n');
+                        console.log("DEBUG: Full Product Map:\n" + debugMap);
+
+                        // Proactive Fix: Find products with similar name to category?
+                        if (catName.toLowerCase().includes('burger')) {
+                            const candidates = allProds.filter(p => p.name.toLowerCase().includes('burger'));
+                            console.log("DEBUG: Products with 'Burger' in name:", JSON.stringify(candidates.map(c => ({ id: c.id, name: c.name, cat_id: c.category_id }))));
+                        }
+
+                        await sendWhatsApp(from, { text: `Lo siento, por ahora no hay productos en ${catName}.` });
+                        return;
+                    }
+                }
+            }
+
+            const menuContext = await prodService.getMenuContext();
+            const allProducts = await prodService.getAllProducts();
+
+            // ANALYZE INTENT with CART Context
+            let geminiResponse: any;
+            try {
+                geminiResponse = await import('./gemini.ts').then(m => m.analyzeIntent(aggregatedText, [], session.cart || []));
+            } catch (e) {
+                console.error("⚠️ AI Brain Freeze (Intent):", e);
+                geminiResponse = { intent: 'CHAT' }; // Fallback to safe chat/menu
+            }
+            console.log("🧠 Intent:", geminiResponse.intent);
+
+            // --- PRIORITY: MENU & CATEGORIES ---
+            if (geminiResponse.intent === 'CATEGORY_FILTER') {
+                const cats = await prodService.getCategories();
+                let targetCategory = null;
+
+                // 1. Specific Category Requested? (e.g. "Ver Bebidas")
+                if (geminiResponse.category_keyword) {
+                    const keyword = geminiResponse.category_keyword.toLowerCase();
+                    // Fuzzy match
+                    targetCategory = cats.find(c => c.name.toLowerCase().includes(keyword) || keyword.includes(c.name.toLowerCase()));
+                }
+
+                if (targetCategory) {
+                    console.log(`📂 Specific Category Intent: "${targetCategory.name}"`);
+                    const products = await prodService.getProductsByCategory(targetCategory.id);
+
+                    if (products.length > 0) {
+                        const rows = products.slice(0, 10).map(p => ({
+                            id: `${p.name}`,
+                            title: p.name.substring(0, 24),
+                            description: `$${p.base_price} - ${p.description ? p.description.substring(0, 60) : ''}`
+                        }));
+
+                        // Friendly Messages Map
+                        const catLower = targetCategory.name.toLowerCase();
+                        let friendlyBody = `Aquí tienes nuestros ${targetCategory.name}. ¿Cuál se te antoja?`;
+
+                        if (catLower.includes('bebida')) friendlyBody = "¡Claro! 🥤 Enseguida te paso nuestras bebidas refrescantes:";
+                        else if (catLower.includes('postre')) friendlyBody = "¡El toque dulce perfecto! 🍰 Aquí están nuestros postres:";
+                        else if (catLower.includes('entrada')) friendlyBody = "¡Para ir abriendo apetito! 🥟 Mira nuestras entradas:";
+                        else if (catLower.includes('poke')) friendlyBody = "¡Excelentes opciones! 🥗 Aquí tienes nuestros Pokes favoritos:";
+                        else if (catLower.includes('burger')) friendlyBody = "¡Uff, buena elección! 🍔 Checa nuestras Sushi Burgers:";
+
+                        await sendListMessage(from, {
+                            header: `📂 ${targetCategory.name}`,
+                            body: friendlyBody,
+                            footer: "Yoko Poke",
+                            buttonText: "Ver Opciones",
+                            sections: [{
+                                title: targetCategory.name,
+                                rows: rows
+                            }]
+                        });
+                        return;
+                    }
+                }
+
+                // 2. Fallback: Generic Menu (Category List)
+                console.log("📂 Intent is MENU/CATEGORY -> Sending Category List");
+                const rows = [
+                    { id: "armar_poke", title: "🥗 Armar un Poke", description: "Crea tu poke ideal" }
+                ];
+                cats.forEach(c => {
+                    rows.push({
+                        id: `cat_${c.id}`,
+                        title: `${c.name}`,
+                        description: c.description ? c.description.substring(0, 60) : "Ver productos"
+                    });
+                });
 
                 await sendListMessage(from, {
-                    header: `📂 ${catName}`,
-                    body: `Aquí tienes nuestros ${catName}. ¿Cuál se te antoja?`,
+                    header: "🥗 Menú Yoko Poke",
+                    body: "¿Qué se te antoja hoy? Selecciona una categoría:",
                     footer: "Yoko Poke",
-                    buttonText: "Ver Productos",
+                    buttonText: "Ver Categorías",
                     sections: [{
-                        title: catName,
-                        rows: rows
+                        title: "Nuestro Menú",
+                        rows: rows.slice(0, 10)
+                    }]
+                });
+                return; // STOP HERE.
+            }
+
+            // Legacy fallthrough for keyword matching if AI fails but text has keywords
+            else if (aggregatedText.toLowerCase().includes('menu') || aggregatedText.toLowerCase().includes('menú')) {
+                // ... handled by above if AI is smart, but keeping as fallback if AI says 'CHAT' but user said 'Menu' logic is weird.
+                // Actually, if AI says CHAT for "Quiero ver el menú", sales response might handle it or we should force category filter.
+                // START_BUILDER or CHECKOUT handled separately.
+                // Let's rely on Sales Agent for generic "Menu" in textual conversation if not CATEGORY_FILTER.
+                // But strictly, if user types "Menu", we want the list. 
+
+                // Let's execute the GENERIC MENU logic again here to be safe
+                console.log("📂 Keyword 'Menu' detected -> Sending Category List");
+                const cats = await prodService.getCategories();
+                const rows = [
+                    { id: "armar_poke", title: "🥗 Armar un Poke", description: "Crea tu poke ideal" }
+                ];
+                cats.forEach(c => {
+                    rows.push({
+                        id: `cat_${c.id}`,
+                        title: `${c.name}`,
+                        description: c.description ? c.description.substring(0, 60) : "Ver productos"
+                    });
+                });
+
+                await sendListMessage(from, {
+                    header: "🥗 Menú Yoko Poke",
+                    body: "¿Qué se te antoja hoy? Selecciona una categoría:",
+                    footer: "Yoko Poke",
+                    buttonText: "Ver Categorías",
+                    sections: [{
+                        title: "Nuestro Menú",
+                        rows: rows.slice(0, 10)
                     }]
                 });
                 return;
-            } else {
-                console.log(`⚠️ ERROR: No products found for category ${catName} (ID: ${catId})`);
+            } else if (geminiResponse.intent === 'CHECKOUT') {
+                // --- CHECKOUT INIT ---
+                console.log("💳 Intent is CHECKOUT -> Starting Checkout Flow");
 
-                // Deep Debug: Output Category ID map
-                const allProds = await prodService.getAllProducts();
-                const debugMap = allProds.map(p => `[${p.id}] ${p.name} -> CatID: ${p.category_id}`).join('\n');
-                console.log("DEBUG: Full Product Map:\n" + debugMap);
-
-                // Proactive Fix: Find products with similar name to category?
-                if (catName.toLowerCase().includes('burger')) {
-                    const candidates = allProds.filter(p => p.name.toLowerCase().includes('burger'));
-                    console.log("DEBUG: Products with 'Burger' in name:", JSON.stringify(candidates.map(c => ({ id: c.id, name: c.name, cat_id: c.category_id }))));
+                // Initialize Checkout from Cart if available
+                let initialTotal = 0;
+                let selections = {};
+                // If cart exists, maybe we can convert it to checkout state? 
+                // For now, keeping simple structure, but logically we should migrate cart -> checkout
+                if (session.cart) {
+                    initialTotal = session.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                 }
 
-                await sendWhatsApp(from, { text: `Lo siento, por ahora no hay productos en ${catName}.` });
+                session.mode = 'CHECKOUT';
+                session.checkoutState = {
+                    productSlug: 'custom-order',
+                    selections: {},
+                    totalPrice: initialTotal,
+                    checkoutStep: 'COLLECT_NAME',
+                    // TODO: Move cart items to checkoutState.items (This requires schema update in session.ts checkoutState, currently simplified)
+                };
+                await updateSession(from, session);
+
+                const response = {
+                    text: `¡Excelente! El total es $${initialTotal}. Para tomar tu pedido, ¿a qué nombre lo registro? 📝`
+                };
+                await sendWhatsApp(from, response);
                 return;
+            } else if (geminiResponse.intent === 'START_BUILDER') {
+                // Direct Sale - Let Sales Response handle it but ensure it doesn't redirect
+                const salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts, session.cart || []));
+                const response = {
+                    text: salesRes.text,
+                    useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0,
+                    buttons: salesRes.suggested_actions?.slice(0, 2) // MAX 2 BUTTONS
+                };
+                if (salesRes.show_image_url) await sendWhatsAppImage(from, salesRes.show_image_url, "");
+                await sendWhatsApp(from, response);
+            } else {
+                // GENERAL CHAT / SALES
+                let salesRes;
+                try {
+                    salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts, session.cart || []));
+                } catch (e) {
+                    console.error("⚠️ AI Brain Freeze (Sales):", e);
+                    // FALLBACK RESPONSE (Emergency Generator)
+                    salesRes = {
+                        text: "¡Hola! Se me trabó un poco el cable, pero aquí estoy. 🤖\n¿Quieres ver nuestro menú?",
+                        suggested_actions: ["Ver Menú"],
+                        useList: false
+                    };
+                }
+
+                // --- HANDLE SERVER ACTIONS (ADD TO CART) with REALITY CHECK ---
+                // --- HANDLE SERVER ACTIONS (ADD TO CART) with REALITY CHECK ---
+                if (salesRes.server_action && salesRes.server_action.type === 'ADD_TO_CART') {
+                    console.log("🛒 Executing ADD_TO_CART:", salesRes.server_action.product);
+
+                    const requestedId = salesRes.server_action.product.id;
+                    const requestedName = salesRes.server_action.product.name;
+
+                    // REALITY CHECK: Does this product actually exist?
+                    // Use loose equality for ID to handle string/number mismatch
+                    let realProduct = allProducts.find(p => p.id == requestedId || p.slug === requestedId);
+
+                    // If not found by ID/Slug, fuzzy search by Name
+                    if (!realProduct && requestedName) {
+                        realProduct = allProducts.find(p => p.name.toLowerCase().includes(requestedName.toLowerCase()));
+                    }
+
+                    if (realProduct) {
+                        if (!session.cart) session.cart = [];
+
+                        session.cart.push({
+                            id: String(realProduct.id || realProduct.slug), // Ensure String
+                            name: realProduct.name,
+                            price: realProduct.base_price, // Ensure correct price from DB
+                            quantity: salesRes.server_action.product.quantity || 1
+                        });
+                        // Save immediately
+                        await updateSession(from, session);
+                        console.log(`✅ Validated & Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
+                    } else {
+                        console.warn(`🛑 BLOCKED Hallucinated Product: ${requestedName} (ID: ${requestedId})`);
+                        // Optionally inform user or just let the chat continue.
+                    }
+                }
+
+                // --- NEW: LIST MESSAGE SUPPORT ---
+                if (salesRes.useList && salesRes.listData && salesRes.listData.rows.length > 0) {
+                    console.log("📜 Sending List Message Response");
+
+                    // Limit to 10 items (WhatsApp Max)
+                    const rows = salesRes.listData.rows.slice(0, 10).map(r => ({
+                        id: r.id || r.title.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+                        title: r.title.substring(0, 24), // Max 24 chars allowed by WhatsApp for Title
+                        description: r.description?.substring(0, 72) || "" // Max 72 chars
+                    }));
+
+                    await sendListMessage(from, {
+                        header: "Menú Yoko Poke",
+                        body: salesRes.text || "Selecciona una opción del menú:",
+                        footer: "Toca el botón para ver más 👇",
+                        buttonText: "Ver Opciones",
+                        sections: [
+                            {
+                                title: salesRes.listData.title || "Productos",
+                                rows: rows
+                            }
+                        ]
+                    });
+                    // Stop here, list sent
+                } else {
+                    // Fallback to text/buttons
+                    const response = {
+                        text: salesRes.text,
+                        useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0,
+                        buttons: salesRes.suggested_actions?.slice(0, 2) // MAX 2 BUTTONS
+                    };
+                    if (salesRes.show_image_url) await sendWhatsAppImage(from, salesRes.show_image_url, "");
+                    await sendWhatsApp(from, response);
+                }
             }
         }
+
+        // RELEASE LOCK
+        session.isProcessing = false;
+        session.activeThreadId = undefined;
+        await updateSession(from, session);
+
+    } catch (error) {
+        // RELEASE LOCK ON ERROR TOO
+        session.isProcessing = false;
+        session.activeThreadId = undefined;
+        await updateSession(from, session);
+
+        console.error("🔥 FATAL BOT ERROR:", error);
+        await sendWhatsApp(from, { text: "😰 Ups, tuve un pequeño mareo. ¿Me lo repites por favor?" });
     }
-
-    const menuContext = await prodService.getMenuContext();
-    const allProducts = await prodService.getAllProducts();
-
-    // ANALYZE INTENT
-    const geminiResponse = await import('./gemini.ts').then(m => m.analyzeIntent(aggregatedText));
-    console.log("🧠 Intent:", geminiResponse.intent);
-
-    // --- PRIORITY: MENU & CATEGORIES ---
-    // If user asks for "Menu", use our deterministic Category List (handleBasicIntent logic)
-    // instead of letting AI halluciation or generate a partial list.
-    if (geminiResponse.intent === 'CATEGORY_FILTER' || aggregatedText.toLowerCase().includes('menu') || aggregatedText.toLowerCase().includes('menú')) {
-        // Re-use logic from handleBasicIntent but adapted
-        // Or just call handleBasicIntent if we export it?
-        // Let's implement robust Category List send here directly to be safe and avoid session reset side effects of handleBasicIntent.
-
-        console.log("📂 Intent is MENU/CATEGORY -> Sending Category List");
-        const cats = await prodService.getCategories();
-        const rows = [
-            { id: "armar_poke", title: "🥗 Armar un Poke", description: "Crea tu poke ideal" }
-        ];
-        cats.forEach(c => {
-            rows.push({
-                id: `cat_${c.id}`,
-                title: `${c.name}`,
-                description: c.description ? c.description.substring(0, 60) : "Ver productos"
-            });
-        });
-
-        await sendListMessage(from, {
-            header: "🥗 Menú Yoko Poke",
-            body: "¿Qué se te antoja hoy? Selecciona una categoría:",
-            footer: "Yoko Poke",
-            buttonText: "Ver Categorías",
-            sections: [{
-                title: "Nuestro Menú",
-                rows: rows.slice(0, 10)
-            }]
-        });
-        return; // STOP HERE. No double messages.
-    }
-
-    let response: BotResponse;
-
-    if (geminiResponse.intent === 'START_BUILDER') {
-        // Direct Sale - Let Sales Response handle it but ensure it doesn't redirect
-        const salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts));
-        response = {
-            text: salesRes.text,
-            useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0,
-            buttons: salesRes.suggested_actions?.slice(0, 2) // MAX 2 BUTTONS
-        };
-        if (salesRes.show_image_url) await sendWhatsAppImage(from, salesRes.show_image_url, "");
-    } else {
-        const salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts));
-
-        // --- NEW: LIST MESSAGE SUPPORT ---
-        if (salesRes.useList && salesRes.listData && salesRes.listData.rows.length > 0) {
-            console.log("📜 Sending List Message Response");
-
-            // Limit to 10 items (WhatsApp Max)
-            const rows = salesRes.listData.rows.slice(0, 10).map(r => ({
-                id: r.id || r.title.toLowerCase().replace(/[^a-z0-9]/g, '_'),
-                title: r.title.substring(0, 24), // Max 24 chars allowed by WhatsApp for Title
-                description: r.description?.substring(0, 72) || "" // Max 72 chars
-            }));
-
-            await sendListMessage(from, {
-                header: "Menú Yoko Poke",
-                body: salesRes.text || "Selecciona una opción del menú:",
-                footer: "Toca el botón para ver más 👇",
-                buttonText: "Ver Opciones",
-                sections: [
-                    {
-                        title: salesRes.listData.title || "Productos",
-                        rows: rows
-                    }
-                ]
-            });
-            return; // Stop here, list sent
-        }
-
-        // Fallback to text/buttons
-        response = {
-            text: salesRes.text,
-            useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0,
-            buttons: salesRes.suggested_actions?.slice(0, 2) // MAX 2 BUTTONS
-        };
-        if (salesRes.show_image_url) await sendWhatsAppImage(from, salesRes.show_image_url, "");
-    }
-
-    // --- ADD DELAY FOR NATURAL FEEL ---
-    // User feedback: Delay causes out-of-order messages (Image arrives before Text because Image is sent inside block, text is buffered).
-    // REMOVED to ensure synchronous delivery.
-    // await new Promise(resolve => setTimeout(resolve, 4000));
-
-    await sendWhatsApp(from, response);
 }
 
 /**
@@ -1090,54 +1403,86 @@ export async function sendWhatsApp(to: string, response: BotResponse) {
     }
 }
 
-async function sendWhatsAppText(to: string, message: string) {
-    await fetch(
-        `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
-        {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                messaging_product: "whatsapp",
-                to: to,
-                type: "text",
-                text: { body: message }
-            }),
+// --- RETRY UTILITY ---
+async function fetchWithRetry(url: string, options: RequestInit, retries = 3, backoff = 500): Promise<Response> {
+    try {
+        const response = await fetch(url, options);
+        if (!response.ok && retries > 0) {
+            const status = response.status;
+            // Retry on Server Errors (5xx) or Rate Limits (429)
+            if (status >= 500 || status === 429) {
+                console.warn(`⚠️ API Request Failed (${status}). Retrying in ${backoff}ms... (${retries} left)`);
+                await new Promise(r => setTimeout(r, backoff));
+                return fetchWithRetry(url, options, retries - 1, backoff * 2);
+            }
         }
-    );
+        return response;
+    } catch (error) {
+        if (retries > 0) {
+            console.warn(`⚠️ Network Error: ${error}. Retrying in ${backoff}ms... (${retries} left)`);
+            await new Promise(r => setTimeout(r, backoff));
+            return fetchWithRetry(url, options, retries - 1, backoff * 2);
+        }
+        throw error;
+    }
+}
+
+async function sendWhatsAppText(to: string, message: string) {
+    try {
+        await fetchWithRetry(
+            `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    to: to,
+                    type: "text",
+                    text: { body: message }
+                }),
+            }
+        );
+    } catch (e) {
+        console.error("Failed to send text message after retries:", e);
+    }
 }
 
 async function sendWhatsAppButtons(to: string, message: string, buttons: string[]) {
-    await fetch(
-        `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
-        {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                messaging_product: "whatsapp",
-                to: to,
-                type: "interactive",
-                interactive: {
-                    type: "button",
-                    body: { text: message },
-                    action: {
-                        buttons: buttons.map((btn, idx) => ({
-                            type: "reply",
-                            reply: {
-                                id: `btn_${idx}`,
-                                title: btn.substring(0, 20)
-                            }
-                        }))
+    try {
+        await fetchWithRetry(
+            `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    to: to,
+                    type: "interactive",
+                    interactive: {
+                        type: "button",
+                        body: { text: message },
+                        action: {
+                            buttons: buttons.map((btn, idx) => ({
+                                type: "reply",
+                                reply: {
+                                    id: `btn_${idx}`,
+                                    title: btn.substring(0, 20)
+                                }
+                            }))
+                        }
                     }
-                }
-            }),
-        }
-    );
+                }),
+            }
+        );
+    } catch (e) {
+        console.error("Failed to send button message after retries:", e);
+    }
 }
 
 /**
@@ -1168,8 +1513,7 @@ async function sendListMessage(to: string, list: ListMessage) {
             }
         };
 
-        console.log("📤 Sending List Message:", JSON.stringify(payload, null, 2));
-        const response = await fetch(
+        const response = await fetchWithRetry(
             `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
             {
                 method: "POST",
@@ -1181,11 +1525,9 @@ async function sendListMessage(to: string, list: ListMessage) {
             }
         );
 
-        const responseText = await response.text();
-        console.log("📥 Meta Response:", response.status, responseText);
-
         if (!response.ok) {
-            console.error('List Message failed:', responseText);
+            const error = await response.text();
+            console.error('List Message failed:', error);
             throw new Error('List message send failed');
         }
 
@@ -1222,7 +1564,7 @@ async function sendButtonMessage(to: string, msg: ButtonMessage) {
             }
         };
 
-        const response = await fetch(
+        const response = await fetchWithRetry(
             `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
             {
                 method: "POST",
@@ -1248,92 +1590,238 @@ async function sendButtonMessage(to: string, msg: ButtonMessage) {
 }
 
 async function sendWhatsAppImage(to: string, imageUrl: string, caption: string) {
-    await fetch(
-        `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
-        {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                messaging_product: "whatsapp",
-                to: to,
-                type: "image",
-                image: {
-                    link: imageUrl,
-                    caption: caption
-                }
-            }),
-        }
-    );
+    try {
+        await fetchWithRetry(
+            `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    to: to,
+                    type: "image",
+                    image: {
+                        link: imageUrl,
+                        caption: caption
+                    }
+                }),
+            }
+        );
+    } catch (e) {
+        console.error("Failed to send image after retries", e);
+    }
 }
 
-// --- SERVER ---
-if (import.meta.main) {
-    Deno.serve(async (req: Request) => {
-        console.log("🔔 INCOMING WEBHOOK REQUEST", req.method, req.url);
-        if (req.method === 'GET') {
-            const url = new URL(req.url);
-            if (url.searchParams.get('hub.verify_token') === WHATSAPP_VERIFY_TOKEN) {
-                return new Response(url.searchParams.get('hub.challenge'), { status: 200 });
-            }
-            return new Response('Forbidden', { status: 403 });
+// --- SERVER entry point ---ENTRY POINT (The "Gateway") ---
+// Critical: Must always return 200 OK to Meta to prevent retries/bans,
+// unless it's a verification request.
+
+Deno.serve(async (req: Request) => {
+    // 1. HEALTH CHECK / VERIFICATION
+    if (req.method === "GET") {
+        const url = new URL(req.url);
+        const mode = url.searchParams.get("hub.mode");
+        const token = url.searchParams.get("hub.verify_token");
+        const challenge = url.searchParams.get("hub.challenge");
+
+        if (mode === "subscribe" && token === WHATSAPP_VERIFY_TOKEN) {
+            console.log("✅ Webhook Verified");
+            return new Response(challenge, { status: 200 });
+        } else {
+            console.error("❌ Verification Failed. Token:", token);
+            return new Response("Forbidden", { status: 403 });
+        }
+    }
+
+    // 2. INCOMING MESSAGE PROCESSING
+    try {
+        const body = await req.json();
+
+        // Validate Payload Structure
+        if (!body.object || !body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
+            // Not a message (maybe status update), ignore gracefully
+            return new Response("EVENT_RECEIVED", { status: 200 });
         }
 
+        const message = body.entry[0].changes[0].value.messages[0];
+        const from = message.from; // Phone number
+
+        // --- 0. IDEMPOTENCY CHECK (God Level) ---
+        // Prevent double-processing if Meta retries the webhook
         try {
-            const body = await req.json();
-            if (body.object && body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
-                const message = body.entry[0].changes[0].value.messages[0];
+            const { claimMessageId } = await import('./idempotencyService.ts');
+            const isNew = await claimMessageId(message.id);
+            if (!isNew) {
+                console.warn(`♻️ Duplicate Message Skipped: ${message.id}`);
+                return new Response("DUPLICATE_HANDLED", { status: 200 });
+            }
+        } catch (e) {
+            console.error("Idempotency Check Failed, proceeding anyway:", e);
+        }
+
+        console.log(`📨 Message from ${from}: ${message.type}`);
+
+        // 3. HAND OFF TO BACKGROUND WORKER
+        // We return 200 OK immediately to Meta, and process logic in background.
+        // This is CRITICAL for handling Audio/AI which might take > 5s.
+
+        const runtime = (globalThis as any).EdgeRuntime;
+        const processTask = async () => {
+            try {
+                // --- 1. KILL SWITCH (Feature Flag) ---
+                try {
+                    const { isMaintenanceMode } = await import('./configService.ts');
+                    if (await isMaintenanceMode()) {
+                        console.warn("🛑 Maintenance Mode Active. Stopping.");
+                        await sendWhatsApp(from, { text: "🔧 Estamos en mantenimiento para mejorar tu experiencia. Volvemos en unos minutos. 👷‍♂️" });
+                        return;
+                    }
+                } catch (e) {
+                    console.error("Config Check Error:", e);
+                }
+
                 let text = "";
 
+                // --- EXTRACT CONTENT ---
                 if (message.type === 'text') {
                     text = message.text.body;
-                } else if (message.type === 'interactive') {
-                    if (message.interactive.type === 'button_reply') {
-                        // Use Title for Natural Language Processing if ID is internal (btn_X)
-                        // This allows AI to "hear" the button text (e.g. "Pink Lemonade")
-                        const btnId = message.interactive.button_reply.id;
-                        if (btnId.startsWith('btn_')) {
-                            text = message.interactive.button_reply.title;
-                        } else {
-                            text = btnId;
-                        }
-                    } else if (message.interactive.type === 'list_reply') {
-                        text = message.interactive.list_reply.id;
-                    } else if (message.interactive.type === 'nfm_reply') {
-                        try {
-                            const responseJson = JSON.parse(message.interactive.nfm_reply.response_json);
-                            console.log("🌸 FLOW RESPONSE:", responseJson);
+                }
+                else if (message.type === 'audio') {
+                    // 🎤 VOICE NOTE SUPPORT
+                    console.log(`🎤 Receiving Audio: ${message.audio.id}`);
+                    try {
+                        const { downloadMedia } = await import('./mediaService.ts');
+                        const { transcribeAudio } = await import('./gemini.ts');
 
-                            const runtime = (globalThis as any).EdgeRuntime;
-                            if (runtime) {
-                                runtime.waitUntil(handleFlowResponse(message.from, responseJson));
-                            } else {
-                                await handleFlowResponse(message.from, responseJson);
+                        // 1. Download
+                        const media = await downloadMedia(message.audio.id);
+                        if (media) {
+                            // 2. Transcribe
+                            text = await transcribeAudio(media);
+                            console.log(`📝 Transcription: "${text}"`);
+                            if (!text) {
+                                await sendWhatsApp(from, { text: "🙉 Escuché ruido pero no entendí. ¿Podrías escribirlo?" });
                             }
-                            return new Response('EVENT_RECEIVED', { status: 200 });
-                        } catch (e) { console.error("Flow parse error", e); }
+                        } else {
+                            console.error("Audio download failed");
+                            await sendWhatsApp(from, { text: "⚠️ No pude descargar tu audio. ¿Me lo escribes?" });
+                        }
+                    } catch (e) {
+                        console.error("Audio processing error:", e);
+                    }
+                }
+                else if (message.type === 'location') {
+                    // 📍 LOCATION MESSAGE (Premium UX)
+                    console.log(`📍 Receiving Location from ${from}`);
+                    try {
+                        const location = message.location;
+                        const session = await getSession(from);
+
+                        // Check if we're in checkout waiting for location
+                        if (session.mode === 'CHECKOUT' && session.checkoutState?.checkoutStep === 'COLLECT_LOCATION') {
+                            session.checkoutState.location = {
+                                latitude: location.latitude,
+                                longitude: location.longitude,
+                                address: location.address || location.name
+                            };
+
+                            // Advance to address collection
+                            session.checkoutState.checkoutStep = 'COLLECT_ADDRESS';
+                            await updateSession(from, session);
+
+                            await sendWhatsApp(from, {
+                                text: "📍 ¡Ubicación recibida!\n\nAhora, por favor escribe tu dirección completa:\n(Calle, Número, Colonia)"
+                            });
+                            return; // Don't process as text
+                        } else {
+                            // Location sent outside of checkout context
+                            await sendWhatsApp(from, {
+                                text: "📍 Ubicación recibida. ¿En qué puedo ayudarte?"
+                            });
+                            return;
+                        }
+                    } catch (e) {
+                        console.error("Location processing error:", e);
+                    }
+                }
+                else if (message.type === 'interactive') {
+                    const interactive = message.interactive;
+                    if (interactive.type === 'button_reply') {
+                        const id = interactive.button_reply.id;
+                        text = (id.includes('_') && !id.startsWith('btn_')) ? id : interactive.button_reply.title;
+                    } else if (interactive.type === 'list_reply') {
+                        text = interactive.list_reply.id;
+                    } else if (interactive.type === 'nfm_reply') {
+                        // Handle Flow Response specially
+                        try {
+                            const responseJson = JSON.parse(interactive.nfm_reply.response_json);
+                            console.log("🌸 FLOW RESPONSE:", responseJson);
+                            await handleFlowResponse(from, responseJson);
+                            return; // Flow handled separately
+                        } catch (e) {
+                            console.error("Flow Parse Error:", e);
+                        }
                     }
                 }
 
+                else if (['image', 'video', 'sticker', 'document', 'contacts'].includes(message.type)) {
+                    // 🚫 UNSUPPORTED MEDIA HANDLING (Senior UX)
+                    // Instead of silence, we educate the user.
+                    console.log(`⚠️ Unsupported Message Type: ${message.type}`);
+                    await sendWhatsApp(from, {
+                        text: "🙈 Lo siento, mi cerebro digital aún no procesa fotos, videos ni stickers.\n\nPor favor escríbeme lo que necesitas. 📝"
+                    });
+                    return;
+                }
+
+                // --- PROCESS EXTRACTED TEXT ---
                 if (text) {
-                    console.log(`🤖 Processing text: "${text}"`);
-                    const runtime = (globalThis as any).EdgeRuntime;
-                    if (runtime) {
-                        runtime.waitUntil(processMessage(message.from, text));
-                    } else {
-                        await processMessage(message.from, text);
+                    // 🛡️ INPUT SANITIZATION (Security)
+                    // Protect against DOS (Denial of Service) via massive payloads
+                    if (text.length > 1000) {
+                        console.warn(`⚠️ Truncating massive message from ${from} (${text.length} chars)`);
+                        text = text.substring(0, 1000) + "... (truncado)";
+                    }
+
+                    // Remove Control Characters (Zalgo-proofing basic)
+                    // eslint-disable-next-line no-control-regex
+                    text = text.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+
+                    await processMessage(from, text);
+                }
+
+            } catch (bgError) {
+                console.error("🔥 Background Task Error:", bgError);
+                // 🛡️ GLOBAL SAFETY NET
+                // If we know 'from', we try to tell them we crashed.
+                if (from) {
+                    try {
+                        await sendWhatsApp(from, { text: "🔧 Tuve un pequeño error técnico. ¿Podrías intentar escribir 'Hola' de nuevo?" });
+                    } catch (e) {
+                        console.error("Failed to send error notification:", e);
                     }
                 }
             }
-            return new Response('EVENT_RECEIVED', { status: 200 });
-        } catch (error: any) {
-            console.error('SERVER ERROR:', error);
-            return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+        };
+
+        if (runtime) {
+            runtime.waitUntil(processTask());
+        } else {
+            // Local dev fallback
+            await processTask();
         }
-    });
-}
+
+        return new Response("EVENT_RECEIVED", { status: 200 });
+
+    } catch (error) {
+        console.error("🔥 FATAL SERVER ERROR:", error);
+        // Always return 200 to stop Meta from retrying indefinitely on bad logic
+        return new Response("INTERNAL_SERVER_ERROR_HANDLED", { status: 200 });
+    }
+});
 
 // --- FLOW RESPONSE HANDLER ---
 async function handleFlowResponse(from: string, flowData: any) {
