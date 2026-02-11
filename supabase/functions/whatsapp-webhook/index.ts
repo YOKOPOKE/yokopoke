@@ -629,7 +629,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 // Let it continue -> Bot will process intent normally
             } else {
                 await sendWhatsApp(from, {
-                    text: `😴 Aún no abrimos! Regresamos a las 2pm.\n\nMientras tanto, puedes ver nuestro *Menú Digital* 📱 o hacer tu pedido en línea aquí:\n🌐 https://yokopoke.mx\n\n¿O prefieres que te guarde tu pedido por aquí? Escribe *"Sí"* y te tomo la orden. 🌸`
+                    text: `😴 *¡Shhh! Los ingredientes están durmiendo...* 🐟💤\n\nAún no abrimos, pero regresamos con toda la energía a las *2:00 PM*.\n\n✨ *¡No esperes!*\nPuedes ir armando tu pedido en nuestra Web App y programarlo para cuando abramos (¡y saltar la fila! 🚀):\n\n🌐 https://yokopoke.mx\n\n¿O prefieres que te guarde tu pedido por aquí? Escribe *"Sí"* y te tomo la orden. 📝`
                 });
                 return;
             }
