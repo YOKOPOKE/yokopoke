@@ -6,6 +6,7 @@ import { getSession, updateSession, clearSession, SessionData, BuilderState, Che
 import { getProductWithSteps, getCategories, getAllProducts, getCategoryByName, getProductsByCategory, ProductTree, ProductStep } from './productService.ts';
 import { interpretSelection, analyzeIntent, generateConversationalResponse } from './gemini.ts';
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getBusinessHours } from './configService.ts';
 
 const WHATSAPP_PHONE_ID = Deno.env.get("WHATSAPP_PHONE_ID")!;
 const WHATSAPP_ACCESS_TOKEN = Deno.env.get("WHATSAPP_ACCESS_TOKEN")!;
@@ -616,23 +617,31 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
 
     // --- BUSINESS HOURS CHECK (Premium UX) ---
-    // Restaurant opens at 2pm Comitán time (America/Mexico_City)
     try {
+        const { open, close } = await getBusinessHours();
         const comitenTime = new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' });
         const comitenDate = new Date(comitenTime);
-        const currentHour = comitenDate.getHours(); // 0-23
+        const currentHour = comitenDate.getHours();
 
-        // Open only after 14:00 (2pm)
-        if (currentHour < 14) {
-            console.log(`🔒 Restaurant closed (${currentHour}:00 < 14:00) for ${from}`);
+        const isOpen = currentHour >= open && currentHour < close;
 
-            // Allow basic info queries OR explicit confirmation to order (PRE-ORDER)
-            // If user says "Si" (to previous prompt), "Ordenar", "Quiero", "Armar", let them pass.
-            if (lowerText.match(/\b(menú|menu|hora|ubicación|si|sí|ok|quiero|ordenar|pedir|armar|poke)\b/)) {
-                // Let it continue -> Bot will process intent normally
+        if (!isOpen) {
+            console.log(`🔒 Restaurant closed (${currentHour}:00, Open: ${open}-${close}) for ${from}`);
+
+            // Exception: Pre-Order intent or explicit "Sí"
+            const isPreOrderIntent = lowerText.match(/\b(sí|si|ordenar|pedir|quiero|armar)\b/);
+
+            // Allow basic info queries? User said "el bot responde que estamos fuera de servicio pero si quiere le puede tomar la orden"
+            // So we ALWAYS show closed message UNLESS they are confirming the order?
+            // "peo si es antes de las 2, el bot responde que estamos fuera de servicio"
+            // "pero si quiere le puede tomar la orden" -> "Escribe Sí"
+
+            if (isPreOrderIntent) {
+                // Pass through to standard flow (Checkout/Ordering)
             } else {
+                const openTimeStr = `${open > 12 ? open - 12 : open}:00 ${open >= 12 ? 'PM' : 'AM'}`;
                 await sendWhatsApp(from, {
-                    text: `😴 *¡Shhh! Los ingredientes están durmiendo...* 🐟💤\n\nAún no abrimos, pero regresamos con toda la energía a las *2:00 PM*.\n\n✨ *¡No esperes!*\nPuedes ir armando tu pedido en nuestra Web App y programarlo para cuando abramos (¡y saltar la fila! 🚀):\n\n🌐 https://yokopoke.mx\n\n¿O prefieres que te guarde tu pedido por aquí? Escribe *"Sí"* y te tomo la orden. 📝`
+                    text: `😴 *¡Shhh! Los ingredientes están durmiendo...* 🐟💤\n\nEstamos cerrados en este momento.\nHorario: *${openTimeStr} - ${close > 12 ? close - 12 : close}:00 PM*.\n\n✨ *¿Quieres dejar tu pedido listo?*\nPuedo tomar tu orden ahora y la cocinamos en cuanto abramos. �\n\n➡️ Escribe *"Sí"* para comenzar.`
                 });
                 return;
             }
@@ -1036,7 +1045,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
                     // REALITY CHECK: Does this product actually exist?
                     // Use loose equality for ID to handle string/number mismatch
-                    let realProduct = allProducts.find(p => p.id == requestedId || p.slug === requestedId);
+                    let realProduct = allProducts.find(p => String(p.id) === String(requestedId) || p.slug === requestedId);
 
                     // If not found by ID/Slug, fuzzy search by Name
                     if (!realProduct && requestedName) {

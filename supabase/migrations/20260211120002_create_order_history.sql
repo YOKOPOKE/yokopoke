@@ -20,10 +20,11 @@ CREATE INDEX IF NOT EXISTS idx_order_history_date ON order_history(order_date DE
 -- Enable RLS
 ALTER TABLE order_history ENABLE ROW LEVEL SECURITY;
 
--- Policy: Allow service role to do everything
-CREATE POLICY "Service role can manage order history"
-  ON order_history
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+-- Idempotent Policy Creation
+do $$
+begin
+  if not exists (select 1 from pg_policies where policyname = 'Service role can manage order history' and tablename = 'order_history') then
+    create policy "Service role can manage order history" on order_history for all to service_role using (true) with check (true);
+  end if;
+end
+$$;

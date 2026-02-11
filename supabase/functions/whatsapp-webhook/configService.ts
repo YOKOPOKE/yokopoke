@@ -23,5 +23,16 @@ export async function getAppConfig(key: string): Promise<any> {
 
 export async function isMaintenanceMode(): Promise<boolean> {
     const val = await getAppConfig('maintenance_mode');
+    // If val is strictly true (boolean) or string "true"
     return val === true || val === 'true';
+}
+
+export async function getBusinessHours() {
+    const defaultHours = { open: 14, close: 22 };
+    const val = await getAppConfig('business_hours');
+    if (!val) return defaultHours;
+    return {
+        open: Number(val.open) || 14,
+        close: Number(val.close) || 22
+    };
 }

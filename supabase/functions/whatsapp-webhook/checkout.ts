@@ -1,7 +1,10 @@
+
 import { SessionData, CheckoutState } from './session.ts';
 import { getProductWithSteps } from './productService.ts';
 import { BotResponse, ButtonMessage } from './index.ts';
 import { supabase } from './productService.ts';
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { getBusinessHours } from './configService.ts';
 
 // Import send functions
 declare function sendButtonMessage(to: string, msg: ButtonMessage): Promise<boolean>;
@@ -35,7 +38,7 @@ export async function handleCheckoutFlow(
         // Use Button Message instead of old buttons
         if (sendButtonMessageFn) {
             await sendButtonMessageFn(from, {
-                body: `✅ Perfecto, *${checkout.customerName}*!\n\n📍 ¿Cómo lo quieres recibir?`,
+                body: `✅ Perfecto, * ${checkout.customerName}* !\n\n📍 ¿Cómo lo quieres recibir ? `,
                 buttons: [
                     { id: 'pickup', title: '🏪 Recoger' },
                     { id: 'delivery', title: '🚗 Domicilio' }
@@ -46,7 +49,7 @@ export async function handleCheckoutFlow(
 
         // Fallback
         return {
-            text: `✅ Perfecto, *${checkout.customerName}*!\n\n📍 ¿Cómo lo quieres recibir?`,
+            text: `✅ Perfecto, * ${checkout.customerName}* !\n\n📍 ¿Cómo lo quieres recibir ? `,
             useButtons: true,
             buttons: ['🏪 Recoger en tienda', '🚗 Envío a domicilio']
         };
@@ -89,13 +92,13 @@ export async function handleCheckoutFlow(
             checkout.checkoutStep = 'COLLECT_PICKUP_TIME';
 
             const slots = generateTimeSlots();
-            const buttons = slots.slice(0, 3).map(s => `🕒 ${s}`); // Max 3 buttons
+            const buttons = slots.slice(0, 3).map(s => `🕒 ${s} `); // Max 3 buttons
 
             // If more than 3 slots, maybe just show 3 for now or list body
-            const slotsText = slots.map(s => `• ${s}`).join('\n');
+            const slotsText = slots.map(s => `• ${s} `).join('\n');
 
             return {
-                text: `📍 *Recoger en Tienda*\n\n¿A qué hora pasas por tu pedido? (Estimado)\n\n${slotsText}\n\nSelecciona una hora 👇`,
+                text: `📍 * Recoger en Tienda *\n\n¿A qué hora pasas por tu pedido ? (Estimado) \n\n${slotsText} \n\nSelecciona una hora 👇`,
                 useButtons: true,
                 buttons: slots.slice(0, 3)
             };
@@ -109,7 +112,7 @@ export async function handleCheckoutFlow(
 
 
             return {
-                text: `📍 *Envío a Domicilio*\n\nPara ubicarte mejor, ¿puedes compartir tu ubicación?\n\n👉 Toca el botón de adjuntar (+) y selecciona "Ubicación" 📍`
+                text: `📍 * Envío a Domicilio *\n\nPara ubicarte mejor, ¿puedes compartir tu ubicación ?\n\n👉 Toca el botón de adjuntar(+) y selecciona "Ubicación" 📍`
             };
         }
     }
@@ -177,7 +180,7 @@ export async function handleCheckoutFlow(
         checkout.checkoutStep = 'COLLECT_REFERENCES';
 
         return {
-            text: `📝 Dirección guardada: ${checkout.fullAddress}\n\n¿Alguna referencia para el repartidor?\n(Ej: "Portón blanco", "Junto al Oxxo")`
+            text: `📝 Dirección guardada: ${checkout.fullAddress} \n\n¿Alguna referencia para el repartidor ?\n(Ej: "Portón blanco", "Junto al Oxxo")`
         };
     }
 
@@ -193,7 +196,7 @@ export async function handleCheckoutFlow(
         checkout.checkoutStep = 'COLLECT_REFERENCES';
 
         return {
-            text: `✅ Dirección guardada: ${checkout.fullAddress}\n\n📝 Ahora, ¿alguna referencia para encontrarte?\n(Ej: "Casa azul, portón negro", "Edificio X, Apto 202")`
+            text: `✅ Dirección guardada: ${checkout.fullAddress} \n\n📝 Ahora, ¿alguna referencia para encontrarte ?\n(Ej: "Casa azul, portón negro", "Edificio X, Apto 202")`
         };
     }
 
@@ -202,9 +205,9 @@ export async function handleCheckoutFlow(
         checkout.addressReferences = text.trim();
         checkout.checkoutStep = 'COLLECT_PICKUP_TIME'; // Reuse time slot for delivery ETA
 
-        const slots = generateTimeSlots();
+        const slots = await generateTimeSlots();
         return {
-            text: `✅ Referencias guardadas.\n\n🕒 ¿A qué hora te gustaría recibir tu pedido?\n\n${slots.map(s => `• ${s}`).join('\n')}\n\nSelecciona una hora 👇`,
+            text: `✅ Referencias guardadas.\n\n🕒 ¿A qué hora te gustaría recibir tu pedido ?\n\n${slots.map(s => `• ${s}`).join('\n')} \n\nSelecciona una hora 👇`,
             useButtons: true,
             buttons: slots.slice(0, 3)
         };
@@ -227,7 +230,7 @@ export async function handleCheckoutFlow(
 
         // Handle "Ver más horarios"
         if (cleanId === 'show_more_times' || lowerText.includes('ver más') || lowerText.includes('mas tarde')) {
-            const slots = generateTimeSlots(140, 10, 30); // Start 2h 20m from now, 30 min intervals
+            const slots = await generateTimeSlots(140, 10, 30); // Start 2h 20m from now, 30 min intervals
 
             return {
                 text: "📅 *Horarios Extendidos*\nSelecciona una hora para hoy:",
@@ -240,7 +243,7 @@ export async function handleCheckoutFlow(
                     sections: [{
                         title: "Tarde / Noche",
                         rows: slots.map(s => ({
-                            id: `time_${s}`,
+                            id: `time_${s} `,
                             title: s,
                             description: "Recoger en tienda"
                         }))
@@ -258,7 +261,7 @@ export async function handleCheckoutFlow(
 
         if (selectedTime.length < 3) {
             // Re-render INITIAL view
-            const shortSlots = generateTimeSlots(20, 6, 20); // Next 2 hours, 20 min intervals
+            const shortSlots = await generateTimeSlots(20, 6, 20); // Next 2 hours, 20 min intervals
 
             if (shortSlots.length === 0) {
                 return {
@@ -269,7 +272,7 @@ export async function handleCheckoutFlow(
             }
 
             return {
-                text: `📍 *Recoger en Tienda*\n\n¿A qué hora pasas por tu pedido?`,
+                text: `📍 * Recoger en Tienda *\n\n¿A qué hora pasas por tu pedido ? `,
                 useList: true,
                 listData: {
                     header: "Horario de Recogida",
@@ -280,7 +283,7 @@ export async function handleCheckoutFlow(
                         {
                             title: "Lo antes posible",
                             rows: shortSlots.map(s => ({
-                                id: `time_${s}`,
+                                id: `time_${s} `,
                                 title: s,
                                 description: "Sugerido"
                             }))
@@ -311,13 +314,13 @@ export async function handleCheckoutFlow(
         if (checkout.deliveryMethod === 'delivery') {
             // Show start of address
             const shortAddr = checkout.fullAddress ? checkout.fullAddress.substring(0, 30) + (checkout.fullAddress.length > 30 ? '...' : '') : 'Ubicación compartida';
-            deliveryText = `🚗 Domicilio\n📍 ${shortAddr}\n🕒 Hora: ${checkout.pickupTime}`;
+            deliveryText = `🚗 Domicilio\n📍 ${shortAddr} \n🕒 Hora: ${checkout.pickupTime} `;
         } else {
-            deliveryText = `🏪 Recoger: ${checkout.pickupTime}`;
+            deliveryText = `🏪 Recoger: ${checkout.pickupTime} `;
         }
 
         return {
-            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto? Responde *Sí* para confirmar o *Cancelar* para reiniciar.`
+            text: `📋 * RESUMEN DE TU ORDEN *\n\n${summary} \n\n------------------\n👤 * Nombre:* ${checkout.customerName} \n${deliveryText} \n💰 * TOTAL: $${total}*\n------------------\n\n¿Todo correcto ? Responde * Sí * para confirmar o * Cancelar * para reiniciar.`
         };
     }
 
@@ -403,14 +406,14 @@ export async function handleCheckoutFlow(
         // --- CONFIRMATION MESSAGE ---
         if (isPreOrder) {
             return {
-                text: `🔒 *PRE-ORDEN GUARDADA* 🔒\n\nTu pedido ha sido registrado con éxito para el turno de la tarde.\n\n⏰ *A las 2:00 PM te enviaremos un mensaje* para confirmar que empezamos a cocinar.\n\n¡Gracias por la espera, ${checkout.customerName}! 🍣⏳`,
+                text: `🔒 * PRE - ORDEN GUARDADA * 🔒\n\nTu pedido ha sido registrado con éxito para el turno de la tarde.\n\n⏰ * A las 2:00 PM te enviaremos un mensaje * para confirmar que empezamos a cocinar.\n\n¡Gracias por la espera, ${checkout.customerName} ! 🍣⏳`,
                 useButtons: true,
                 buttons: ['Ver Menú']
             };
         }
 
         return {
-            text: `🎉 *¡ORDEN CONFIRMADA!* 🎉\n\n🧾 EN PREPARACIÓN. Su orden ha sido confirmada y nuestra cocina ha comenzado a prepararla.\n\n¡Gracias por tu preferencia, ${checkout.customerName}! 🥢✨`,
+            text: `🎉 *¡ORDEN CONFIRMADA! * 🎉\n\n🧾 EN PREPARACIÓN.Su orden ha sido confirmada y nuestra cocina ha comenzado a prepararla.\n\n¡Gracias por tu preferencia, ${checkout.customerName} ! 🥢✨`,
             useButtons: true,
             buttons: ['Menú Principal']
         };
@@ -420,7 +423,7 @@ export async function handleCheckoutFlow(
 }
 
 function calculateCheckoutSummary(product: any, selections: Record<number, number[]>, totalPrice: number) {
-    let summary = `*${product.name}*`;
+    let summary = `* ${product.name}* `;
     const itemsJson: any = {
         name: product.name,
         productType: product.type || 'bowl',
@@ -432,9 +435,9 @@ function calculateCheckoutSummary(product: any, selections: Record<number, numbe
         const selectedOptions = step.options.filter((o: any) => selectedOptionIds.includes(o.id));
 
         if (selectedOptions.length > 0) {
-            summary += `\n\n*${step.label}:*`;
-            const optionNames = selectedOptions.map((o: any) => `• ${o.name}`).join('\n');
-            summary += `\n${optionNames}`;
+            summary += `\n\n * ${step.label}:* `;
+            const optionNames = selectedOptions.map((o: any) => `• ${o.name} `).join('\n');
+            summary += `\n${optionNames} `;
 
             itemsJson[step.name || step.label] = selectedOptions.map((o: any) => o.name);
         }
@@ -447,30 +450,40 @@ function calculateCheckoutSummary(product: any, selections: Record<number, numbe
     };
 }
 
-function generateTimeSlots(): string[] {
+async function generateTimeSlots(startOffsetMinutes = 20, count = 5, interval = 20): Promise<string[]> {
     const now = new Date();
-    // Convert to America/Mexico_City
-    // Note: Deno deploy supports IANA timezones
     const mxDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+    const currentHour = mxDate.getHours();
 
-    // Start 20 mins from now (Prep time)
-    mxDate.setMinutes(mxDate.getMinutes() + 20);
+    // Fetch Business Hours
+    const { open, close } = await getBusinessHours();
 
-    // Round up to next 20 interval
-    const remainder = mxDate.getMinutes() % 20;
+    // Pre-Order Logic: If before Open, start at Open Time
+    if (currentHour < open) {
+        mxDate.setHours(open, 0, 0, 0);
+        // Reset minutes? Yes, exactly at opening.
+    } else {
+        // Normal Logic: Start from now + offset
+        mxDate.setMinutes(mxDate.getMinutes() + startOffsetMinutes);
+    }
+
+    // Rounding
+    const remainder = mxDate.getMinutes() % interval;
     if (remainder !== 0) {
-        mxDate.setMinutes(mxDate.getMinutes() + (20 - remainder));
+        mxDate.setMinutes(mxDate.getMinutes() + (interval - remainder));
     }
     mxDate.setSeconds(0);
     mxDate.setMilliseconds(0);
 
     const slots: string[] = [];
-    // Generate next 5 slots
-    for (let i = 0; i < 5; i++) {
-        // Format: HH:MM AM/PM
+    for (let i = 0; i < count; i++) {
+        // Check if exceeds close time
+        if (mxDate.getHours() >= close) break;
+
         const timeStr = mxDate.toLocaleTimeString("es-MX", { hour: '2-digit', minute: '2-digit', hour12: true });
         slots.push(timeStr);
-        mxDate.setMinutes(mxDate.getMinutes() + 20);
+        mxDate.setMinutes(mxDate.getMinutes() + interval);
     }
+
     return slots;
 }
