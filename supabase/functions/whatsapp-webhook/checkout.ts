@@ -91,7 +91,7 @@ export async function handleCheckoutFlow(
         if (deliveryMethod === 'pickup') {
             checkout.checkoutStep = 'COLLECT_PICKUP_TIME';
 
-            const slots = generateTimeSlots();
+            const slots = await generateTimeSlots();
             const buttons = slots.slice(0, 3).map(s => `🕒 ${s} `); // Max 3 buttons
 
             // If more than 3 slots, maybe just show 3 for now or list body
@@ -117,50 +117,7 @@ export async function handleCheckoutFlow(
         }
     }
 
-    // Helper to get Mexico City time
-    function getMexicoCityTime() {
-        return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
-    }
 
-    function generateTimeSlots(startOffsetMinutes = 20, limit = 6, interval = 20): string[] {
-        let mxDate = getMexicoCityTime();
-
-        // Start offset mins from now (Prep time)
-        mxDate.setMinutes(mxDate.getMinutes() + startOffsetMinutes);
-
-        // Round up to next interval
-        const remainder = mxDate.getMinutes() % interval;
-        if (remainder !== 0) {
-            mxDate.setMinutes(mxDate.getMinutes() + (interval - remainder));
-        }
-        mxDate.setSeconds(0);
-        mxDate.setMilliseconds(0);
-
-        // Business Hours: 2 PM (14:00) - 10 PM (22:00)
-        const openingTime = getMexicoCityTime();
-        openingTime.setHours(14, 0, 0, 0); // Open at 2 PM
-
-        const closingTime = getMexicoCityTime();
-        closingTime.setHours(22, 0, 0, 0); // Close at 10 PM
-
-        // If calculated start is before opening, jump to opening time
-        if (mxDate < openingTime) {
-            mxDate = new Date(openingTime);
-        }
-
-        const slots: string[] = [];
-
-        for (let i = 0; i < limit; i++) {
-            // Strict Check: Cannot be past closing time
-            if (mxDate > closingTime) break;
-
-            // Format: HH:MM AM/PM
-            const timeStr = mxDate.toLocaleTimeString("es-MX", { hour: '2-digit', minute: '2-digit', hour12: true });
-            slots.push(timeStr);
-            mxDate.setMinutes(mxDate.getMinutes() + interval);
-        }
-        return slots;
-    }
 
     // Step 2.5: COLLECT_LOCATION (Fallback for text input)
     if (checkout.checkoutStep === 'COLLECT_LOCATION') {

@@ -3,27 +3,28 @@
 import { useCart } from '@/context/CartContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, X, Trash2, ArrowRight, Loader2, UtensilsCrossed, Bike, CheckCircle2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getBusinessHours } from '@/app/actions/getBusinessHours';
 import StripeCheckoutModal from './StripeCheckoutModal';
 import CheckoutStatus, { CheckoutStep } from './CheckoutStatus';
 
 type Tab = 'cart' | 'checkout' | 'success';
 
-// Generate pickup time slots from 2:15 PM to 10 PM (Mexico City time)
-function generatePickupTimeSlots(): string[] {
+// Generate pickup time slots based on dynamic hours
+function generatePickupTimeSlots(openHour: number = 14, closeHour: number = 22): string[] {
     const now = new Date();
     // Convert to Mexico City time
     const mxTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
 
     const slots: string[] = [];
 
-    // Opening time: 2:15 PM
+    // Opening time
     const openingTime = new Date(mxTime);
-    openingTime.setHours(14, 15, 0, 0); // 2:15 PM
+    openingTime.setHours(openHour, 0, 0, 0);
 
-    // Closing time: 10:00 PM
+    // Closing time
     const closingTime = new Date(mxTime);
-    closingTime.setHours(22, 0, 0, 0);
+    closingTime.setHours(closeHour, 0, 0, 0);
 
     // Start time: either now + 20 min prep time, or opening time (whichever is later)
     let currentSlot = new Date(mxTime);
@@ -50,7 +51,7 @@ function generatePickupTimeSlots(): string[] {
         currentSlot.setMinutes(currentSlot.getMinutes() + 15);
     }
 
-    return slots.length > 0 ? slots : ['Cerrado por hoy'];
+    return slots.length > 0 ? slots : ['Cerrado por hoy (Ver horarios mañana)'];
 }
 
 export default function CartDrawer() {
@@ -63,6 +64,19 @@ export default function CartDrawer() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [clientSecret, setClientSecret] = useState<string | null>(null);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+    // Business Hours State
+    const [bizHours, setBizHours] = useState({ open: 14, close: 22 });
+    const [timeSlots, setTimeSlots] = useState<string[]>([]);
+
+    useEffect(() => {
+        // Fetch hours on mount
+        getBusinessHours().then(hours => {
+            setBizHours(hours);
+            // Generate slots immediately
+            setTimeSlots(generatePickupTimeSlots(hours.open, hours.close));
+        });
+    }, []);
 
     // Animation State
     const [loadingStep, setLoadingStep] = useState<CheckoutStep>('idle');
@@ -438,7 +452,8 @@ export default function CartDrawer() {
                                                             }}
                                                         >
                                                             <option value="">Seleccionar hora...</option>
-                                                            {generatePickupTimeSlots().map((time) => (
+                                                            <option value="">Seleccionar hora...</option>
+                                                            {timeSlots.map((time) => (
                                                                 <option key={time} value={time}>{time}</option>
                                                             ))}
                                                         </select>
