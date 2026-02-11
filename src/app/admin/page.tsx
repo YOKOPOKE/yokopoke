@@ -6,15 +6,12 @@ import { ChefHat, ShoppingBag, Settings, Coffee, TrendingUp, Activity, Clock, Ca
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import BotSwitch from './components/BotSwitch';
 
 export const dynamic = 'force-dynamic';
 
 export default function AdminDashboard() {
     const router = useRouter();
-
-    useEffect(() => {
-        router.push('/admin/orders');
-    }, [router]);
 
     const [stats, setStats] = useState({ revenue: 0, pending: 0, completed: 0 });
     const [loading, setLoading] = useState(true);
@@ -125,7 +122,10 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* --- STATS ROW (Matching Orders Page Style) --- */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                    {/* Bot Switch (Control) */}
+                    <BotSwitch />
+
                     {/* Revenue */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
@@ -139,8 +139,10 @@ export default function AdminDashboard() {
                             <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase">Hoy</span>
                         </div>
                         <div className="z-10">
-                            <span className="text-4xl font-black text-slate-900 tracking-tight">${stats.revenue.toLocaleString()}</span>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-1">Ingresos Totales</p>
+                            <ul className="mt-2 space-y-1">
+                                <li><span className="text-3xl font-black text-slate-900 tracking-tight">${stats.revenue.toLocaleString()}</span></li>
+                                <li><p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Ingresos</p></li>
+                            </ul>
                         </div>
                         <div className="absolute right-[-20px] bottom-[-20px] opacity-5 group-hover:scale-110 transition-transform duration-500">
                             <BarChart3 size={140} />
