@@ -53,12 +53,24 @@ export default function BotSwitch() {
                 });
 
             if (error) throw error;
-        } catch (e) {
+
+            // --- TRIGGER NOTIFICATIONS ON OPENING ---
+            if (newValue === false) { // Using newValue to match existing variable
+                // Switching to ONLINE -> Notify Pre-Orders
+                console.log("🔔 Triggering Pre-Order Notifications...");
+                fetch('https://xsolxbroqqjkoseksmny.supabase.co/functions/v1/whatsapp-webhook?action=notify_preorders&secret=yoko_master_key')
+                    .then(res => res.json())
+                    .then(data => console.log("✅ Notifications Result:", data))
+                    .catch(err => console.error("❌ Notification Error:", err));
+            }
+
+            // Optional: Show toast or feedback
+        } catch (e) { // Using 'e' to match existing catch variable
             console.error("Error updating config:", e);
             setMaintenance(!newValue); // Revert
             alert("No se pudo actualizar el estado del bot.");
         } finally {
-            setUpdating(false);
+            setUpdating(false); // Using setUpdating to match existing variable
         }
     };
 

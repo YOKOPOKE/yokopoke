@@ -350,15 +350,22 @@ export async function handleCheckoutFlow(
 
         const { items } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
 
+        // --- PRE-ORDER CHECK ---
+        const mxTime = new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" });
+        const currentHour = new Date(mxTime).getHours();
+        const isPreOrder = currentHour < 14;
+
         const orderData = {
             customer_name: checkout.customerName,
             phone: from,
             total: checkout.totalPrice,
-            status: 'pending',
+            status: isPreOrder ? 'pre_order' : 'pending', // <--- PRE-ORDER STATUS
             items: items,
             delivery_method: checkout.deliveryMethod,
             pickup_time: checkout.pickupTime,
-            address: checkout.address,
+            address: checkout.address || checkout.fullAddress || '', // Fallback
+            address_references: checkout.addressReferences || '',
+            location: checkout.location,
             payment_status: 'pending',
             created_at: new Date().toISOString()
         };
@@ -391,7 +398,15 @@ export async function handleCheckoutFlow(
             });
         } catch (histError) {
             console.error("Non-fatal error saving history:", histError);
-            // Don't fail the order for this
+        }
+
+        // --- CONFIRMATION MESSAGE ---
+        if (isPreOrder) {
+            return {
+                text: `🔒 *PRE-ORDEN GUARDADA* 🔒\n\nTu pedido ha sido registrado con éxito para el turno de la tarde.\n\n⏰ *A las 2:00 PM te enviaremos un mensaje* para confirmar que empezamos a cocinar.\n\n¡Gracias por la espera, ${checkout.customerName}! 🍣⏳`,
+                useButtons: true,
+                buttons: ['Ver Menú']
+            };
         }
 
         return {

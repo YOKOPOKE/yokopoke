@@ -5,10 +5,13 @@
 import { getSession, updateSession, clearSession, SessionData, BuilderState, CheckoutState } from './session.ts';
 import { getProductWithSteps, getCategories, getAllProducts, getCategoryByName, getProductsByCategory, ProductTree, ProductStep } from './productService.ts';
 import { interpretSelection, analyzeIntent, generateConversationalResponse } from './gemini.ts';
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const WHATSAPP_PHONE_ID = Deno.env.get("WHATSAPP_PHONE_ID")!;
 const WHATSAPP_ACCESS_TOKEN = Deno.env.get("WHATSAPP_ACCESS_TOKEN")!;
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Types
 export interface MessageContext {
@@ -1621,6 +1624,69 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string) 
 // unless it's a verification request.
 
 Deno.serve(async (req: Request) => {
+    // --- ADMIN ACTION: NOTIFY PRE-ORDERS ---
+    {
+        const url = new URL(req.url);
+        if (url.searchParams.get('action') === 'notify_preorders' && url.searchParams.get('secret') === 'yoko_master_key') {
+            const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+            console.log("🔔 Triggering Pre-Order Notifications...");
+
+            // 1. Get correct date in Mexico City
+            const mxFormatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Mexico_City',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+            const todayMX = mxFormatter.format(new Date());
+
+            // 2. Fetch Orders
+            const { data: orders, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('status', 'pre_order')
+                .gte('created_at', `${todayMX}T00:00:00`)
+                .lte('created_at', `${todayMX}T23:59:59`);
+
+            if (error) {
+                console.error("🔥 DB Error:", error);
+                return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+            }
+
+            let successful = 0;
+            let failed = 0;
+
+            if (orders && orders.length > 0) {
+                for (const order of orders) {
+                    try {
+                        // Notify
+                        await sendWhatsApp(order.phone, {
+                            text: `👋 ¡Hola *${order.customer_name}*! 🌞\n\n📢 *YA ABRIMOS Y TU ORDEN ESTÁ EN MARCH A* 🍳\n\nNuestra cocina ya recibió tu pedido pre-ordenado.\n\n✅ *Status:* Confirmado y cocinando.\n⏳ *Tiempo estimado:* 30-40 mins.\n\nSi necesitas cambiar algo, avísanos en los próximos 5 mins. ¡Gracias! 🥢`
+                        });
+
+                        // Update Status
+                        const { error: updateError } = await supabase
+                            .from('orders')
+                            .update({ status: 'pending' })
+                            .eq('id', order.id);
+
+                        if (updateError) throw updateError;
+                        successful++;
+                    } catch (e: any) {
+                        console.error(`❌ Failed processing ${order.id}:`, e.message);
+                        failed++;
+                    }
+                }
+            }
+
+            return new Response(JSON.stringify({
+                success: true,
+                date: todayMX,
+                processed: successful,
+                failed: failed
+            }), { headers: { "Content-Type": "application/json" } });
+        }
+    }
     // 1. HEALTH CHECK / VERIFICATION
     if (req.method === "GET") {
         const url = new URL(req.url);
