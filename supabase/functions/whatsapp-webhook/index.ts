@@ -623,12 +623,13 @@ export async function processMessage(from: string, text: string): Promise<void> 
         if (currentHour < 14) {
             console.log(`🔒 Restaurant closed (${currentHour}:00 < 14:00) for ${from}`);
 
-            // Allow basic info queries but block orders
-            if (lowerText.includes('menú') || lowerText.includes('menu') || lowerText.includes('hora') || lowerText.includes('ubicación')) {
-                // Let it continue for info only
+            // Allow basic info queries OR explicit confirmation to order (PRE-ORDER)
+            // If user says "Si" (to previous prompt), "Ordenar", "Quiero", "Armar", let them pass.
+            if (lowerText.match(/\b(menú|menu|hora|ubicación|si|sí|ok|quiero|ordenar|pedir|armar|poke)\b/)) {
+                // Let it continue -> Bot will process intent normally
             } else {
                 await sendWhatsApp(from, {
-                    text: `😴 Aún no abrimos! Regresamos a las 2pm.\n\n¿Te guardo tu pedido para cuando abramos? Escribe "Sí" y te recordaré. 🌸`
+                    text: `😴 Aún no abrimos! Regresamos a las 2pm.\n\nMientras tanto, puedes ver nuestro *Menú Digital* 📱 o hacer tu pedido en línea aquí:\n🌐 https://yokopoke.mx\n\n¿O prefieres que te guarde tu pedido por aquí? Escribe *"Sí"* y te tomo la orden. 🌸`
                 });
                 return;
             }
