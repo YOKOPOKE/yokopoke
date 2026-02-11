@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import BotSwitch from './components/BotSwitch';
+import BusinessHoursEditor from './components/BusinessHoursEditor';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,6 +126,9 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                     {/* Bot Switch (Control) */}
                     <BotSwitch />
+
+                    {/* Business Hours Editor */}
+                    <BusinessHoursEditor />
 
                     {/* Revenue */}
                     <motion.div
