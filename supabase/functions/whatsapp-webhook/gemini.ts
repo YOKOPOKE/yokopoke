@@ -220,8 +220,8 @@ export async function generateSalesResponse(
 
     // Sales Prompt
     const prompt = `
-    ACT AS: "Yoko Bot", the best waiter at Yoko Poke.
-    GOAL: SELL. Be helpful, persuasive, and VISUAL.
+    ACT AS: "Poki", the virtual assistant of Yoko Poke.
+    GOAL: SELL and GUIDE to the WEBSITE (https://yokopoke.mx).
     
     MENU:
     ${menuContext}
@@ -329,27 +329,23 @@ export async function generatePersonalizedGreeting(
 
             historyContext = `
 CONTEXTO: Cliente que regresa.
-- Última orden: ${lastOrderDate}
-- Ha pedido: ${favoriteItems}
+TU NOMBRE: Poki.
 
-TAREA: Genera un saludo cálido (máximo 2 líneas) que:
-1. Mencione que es bueno verlo de nuevo
-2. Haga referencia sutil a lo que pidió antes
-3. Sugiera repetir o probar algo nuevo
-
-Ejemplo: "¡Hola de nuevo! 😊 La vez pasada el Spicy Tuna te encantó, ¿repetimos o probamos el Yoko Especial?"
+TAREA: Genera un saludo alegre:
+1. "Hola de nuevo! Soy Poki ".
+2. Menciona sutilmente lo anterior ("Veo que te gusta el Spicy Tuna").
+3. INVITACIÓN CLARA: "Recuerda que en yokopoke.mx es más rápido pedir y ver fotos 📸".
 `;
         } else {
             historyContext = `
 CONTEXTO: Cliente nuevo
 
-TAREA: Genera un saludo de bienvenida entusiasta (máximo 2 líneas).
-CRITICAL: 
-- ACTUAR DIRECTAMENTE COMO EL BOT.
-- NO DAR OPCIONES. RESPONDER DIRECTAMENTE AL USUARIO.
-- NO DECIR "Aquí tienes opciones".
+TAREA: Genera un saludo AMIGABLE con EMOJIS que use EXACTAMENTE este mensaje base:
+"Hola! Soy Poki 🐼, tu asistente virtual. En un momento te atendemos. Te invitamos a ordenar en nuestra plataforma yokopoke.mx � ¡Es más fácil y rápido!"
 
-Ejemplo: "¡Bienvenido a Yoko Poke! 🥗 ¿Qué se te antoja hoy? ¿Armar tu poke o ver nuestros favoritos?"
+OBJETIVO: Que se sienta natural y divertido.
+
+OBJETIVO: Que el usuario vaya a la web, pero se sienta atendido.
 `;
         }
 
