@@ -1630,12 +1630,18 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string) 
 
 // --- AUTOMATION: CRON JOBS ---
 // Run daily at 14:00 CDMX (20:00 UTC)
-Deno.cron("Notify Pre-Orders Daily", "0 20 * * *", async () => {
-    console.log("⏰ Running Automated Pre-Order Notification (20:00 UTC / 14:00 CDMX)");
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const result = await notifyPreOrders(supabase);
-    console.log("✅ Cron Job Finished:", result);
-});
+// --- AUTOMATION: CRON JOBS ---
+// Run daily at 14:00 CDMX (20:00 UTC)
+if (typeof Deno.cron === 'function') {
+    Deno.cron("Notify Pre-Orders Daily", "0 20 * * *", async () => {
+        console.log("⏰ Running Automated Pre-Order Notification (20:00 UTC / 14:00 CDMX)");
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const result = await notifyPreOrders(supabase);
+        console.log("✅ Cron Job Finished:", result);
+    });
+} else {
+    console.warn("⚠️ Deno.cron API not available in this runtime. Automated pre-order notifications will not run.");
+}
 
 async function notifyPreOrders(supabase: any) {
     console.log("🔔 Triggering Pre-Order Notifications...");
