@@ -332,20 +332,24 @@ CONTEXTO: Cliente que regresa.
 TU NOMBRE: Poki.
 
 TAREA: Genera un saludo alegre:
-1. "Hola de nuevo! Soy Poki ".
+1. "Hola de nuevo! Soy Poki 🐼".
 2. Menciona sutilmente lo anterior ("Veo que te gusta el Spicy Tuna").
 3. INVITACIÓN CLARA: "Recuerda que en yokopoke.mx es más rápido pedir y ver fotos 📸".
 `;
         } else {
             historyContext = `
 CONTEXTO: Cliente nuevo
+OBJETIVO: GENERAR EL MENSAJE FINAL EXACTO. NO DATOS ADICIONALES.
 
 TAREA: Genera un saludo AMIGABLE con EMOJIS que use EXACTAMENTE este mensaje base:
-"Hola! Soy Poki 🐼, tu asistente virtual. En un momento te atendemos. Te invitamos a ordenar en nuestra plataforma yokopoke.mx � ¡Es más fácil y rápido!"
+"Hola! Soy Poki 🐼, tu asistente virtual. En un momento te atendemos. Te invitamos a ordenar en nuestra plataforma yokopoke.mx 📲 ¡Es más fácil y rápido!"
 
-OBJETIVO: Que se sienta natural y divertido.
-
-OBJETIVO: Que el usuario vaya a la web, pero se sienta atendido.
+REGLAS CRÍTICAS DE SALIDA:
+1. SOLO ENTREGA EL MENSAJE. NADA MÁS.
+2. NO ESCRIBAS "Aquí tienes una propuesta".
+3. NO ESCRIBAS "Opción recomendada".
+4. NO EXPLIQUES POR QUÉ ELEGISTE EL MENSAJE.
+5. SI ESCRIBES ALGO QUE NO SEA EL SALUDO, EL SISTEMA FALLARÁ.
 `;
         }
 
