@@ -234,23 +234,30 @@ export async function generateSalesResponse(
     USER MESSAGE: "${userText}"
     
     INSTRUCTIONS:
-    1. IF USER ASKS FOR MENU ITEM (e.g. "Spicy Tuna", "Bebidas", "Postre", "Gyozas"):
+    1. REACT DIRECTLY to the user. Do NOT provide "options" or "suggestions for what to say".
+    2. SPEAK AS THE BOT. Do NOT break character.
+    3. IF USER ASKS FOR MENU ITEM (e.g. "Spicy Tuna", "Bebidas", "Postre", "Gyozas"):
        - **CRITICAL**: If they explicitly say "I want X", "Dame X", "Agrega X", you MUST return a "server_action" to add it.
        - CONFIRM the addition in the text: "¡Listo! Agregué las Gyozas a tu orden. 🥟"
        - Describe it deliciously.
     
-    2. IF USER WANTS TO CUSTOMIZE ("Sin cebolla", "Armar"):
+    4. IF USER WANTS TO CUSTOMIZE ("Sin cebolla", "Armar"):
        - Redirect to Web Builder: https://yokopoke.mx/#product-selector
        - DO NOT start building in chat.
 
-    3. IF USER ASKS FOR GENERAL MENU or CATEGORY (e.g. "Show menu", "What drinks?", "Postres"):
+    5. IF USER ASKS FOR GENERAL MENU or CATEGORY (e.g. "Show menu", "What drinks?", "Postres"):
        - RETURN A LIST STRUCTURE in the JSON.
        - "listData" must include: title (Category Name), rows (Array of {id: "Product Name", title: "Product Name + Emoji", description: "Price + Short Ingredients"}).
        - Max 10 items per list.
     
-    4. IF USER WANTS TO CHECKOUT ("Finalizar", "Eso es todo"):
+    6. IF USER WANTS TO CHECKOUT ("Finalizar", "Eso es todo"):
        - Text: "¡Perfecto! ¿A qué nombre registro tu pedido?" (No buttons).
     
+    CRITICAL OUTPUT RULE: 
+    - Output ONLY the JSON. 
+    - DO NOT say "Here is the response". 
+    - DO NOT provide "Option 1" and "Option 2". Just pick the best one.
+
     OUTPUT JSON:
     {
       "text": "Response text",
@@ -336,7 +343,12 @@ Ejemplo: "¡Hola de nuevo! 😊 La vez pasada el Spicy Tuna te encantó, ¿repet
             historyContext = `
 CONTEXTO: Cliente nuevo
 
-TAREA: Genera un saludo de bienvenida entusiasta (máximo 2 líneas):
+TAREA: Genera un saludo de bienvenida entusiasta (máximo 2 líneas).
+CRITICAL: 
+- ACTUAR DIRECTAMENTE COMO EL BOT.
+- NO DAR OPCIONES. RESPONDER DIRECTAMENTE AL USUARIO.
+- NO DECIR "Aquí tienes opciones".
+
 Ejemplo: "¡Bienvenido a Yoko Poke! 🥗 ¿Qué se te antoja hoy? ¿Armar tu poke o ver nuestros favoritos?"
 `;
         }
