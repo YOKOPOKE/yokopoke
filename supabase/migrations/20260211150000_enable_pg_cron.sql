@@ -5,7 +5,8 @@ create extension if not exists pg_net;
 -- Schedule the Pre-Order Notification Job
 -- Runs daily at 20:00 UTC (14:00 CDMX Standard Time)
 -- Hits the WhatsApp Webhook with action=notify_preorders
-select cron.unschedule('notify_preorders');
+-- The following line was removed because it errored if the job didn't exist:
+-- select cron.unschedule('notify_preorders');
 
 select cron.schedule(
     'notify_preorders',

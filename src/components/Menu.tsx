@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, Plus, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
@@ -334,40 +335,44 @@ export default function Menu() {
                                 animate="show"
                                 exit="hidden"
                                 className={`
-                                    rounded-xl p-2 shadow-sm transition-all duration-300 border border-slate-100 group flex flex-col will-change-transform transform-gpu
+                                    rounded-xl p-3 shadow-sm transition-all duration-300 border border-slate-100 group flex flex-col will-change-transform transform-gpu
                                     ${!product.is_active ? 'opacity-60 grayscale bg-slate-50 cursor-pointer' : 'bg-white hover:shadow-xl'}
                                 `}
                             >
                                 {/* Card Content */}
-                                <div className="relative aspect-square mb-2 overflow-hidden rounded-lg bg-slate-100">
+                                <div className="relative aspect-square mb-3 overflow-hidden rounded-lg bg-slate-100">
                                     {product.image_url ? (
                                         <div className="relative w-full h-full">
-                                            <img
+                                            <Image
                                                 src={product.image_url}
                                                 alt={product.name}
-                                                loading="lazy"
-                                                className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-500 transform-gpu"
+                                                fill
+                                                sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                                                className="object-cover group-hover:scale-110 transition-transform duration-500 transform-gpu"
+                                                priority={false}
                                             />
                                             {/* Gradient overlay */}
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                         </div>
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                            <img src="/placeholder.png" className="opacity-50" />
+                                            <img src="/placeholder.png" alt="No image" className="opacity-50 w-12 h-12" />
                                         </div>
                                     )}
-                                    <div className="absolute top-1.5 right-1.5 bg-white/90 backdrop-blur px-1.5 py-0.5 rounded-full text-[10px] font-bold text-slate-900 shadow-sm">
-                                        ${product.base_price}
-                                    </div>
                                 </div>
 
                                 <div className="flex-1 flex flex-col">
-                                    <div className="flex justify-between items-start mb-1">
+                                    {/* Header: Name & Price */}
+                                    <div className="flex justify-between items-start mb-1 gap-2">
                                         <h3 className="font-serif font-bold text-sm text-slate-900 leading-tight group-hover:text-violet-600 transition-colors line-clamp-2 min-h-[2.5em]">
                                             {product.name}
                                         </h3>
+                                        <span className="font-bold text-violet-600 text-sm whitespace-nowrap bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100">
+                                            ${product.base_price}
+                                        </span>
                                     </div>
-                                    <p className="text-[10px] text-slate-500 mb-2 line-clamp-2 leading-relaxed hidden sm:block">
+
+                                    <p className="text-[10px] text-slate-500 mb-3 line-clamp-2 leading-relaxed hidden sm:block">
                                         {product.description}
                                     </p>
 
@@ -376,7 +381,7 @@ export default function Menu() {
                                             onClick={() => handleAdd(product)}
                                             disabled={justAdded[product.id]}
                                             className={`
-                                                w-full py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center justify-center gap-1 relative overflow-hidden transform-gpu
+                                                w-full py-2 rounded-lg font-bold text-[10px] transition-all flex items-center justify-center gap-1 relative overflow-hidden transform-gpu
                                                 ${justAdded[product.id]
                                                     ? 'bg-green-100 text-green-700'
                                                     : !product.is_active

@@ -265,7 +265,7 @@ export async function handleCheckoutFlow(
         const product = await getProductWithSteps(checkout.productSlug);
         if (!product) return { text: "Error: Producto no encontrado." };
 
-        const { total, summary } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
+        const { total, summary } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice, session.cart || []);
 
         let deliveryText = "";
         if (checkout.deliveryMethod === 'delivery') {
@@ -283,7 +283,21 @@ export async function handleCheckoutFlow(
 
     // Step 3: SHOW_SUMMARY (Confirmation)
     if (checkout.checkoutStep === 'SHOW_SUMMARY') {
-        if (lowerText.includes('cancelar') || lowerText.includes('btn_1') || (lowerText === 'btn_1')) { // FIX: Robust check
+        const lowerText = text.toLowerCase();
+        // FIX: Allow natural language exit/restart if user tries to order again
+        if (
+            lowerText.includes('cancelar') ||
+            lowerText.includes('modificar') ||
+            lowerText.includes('cambiar') ||
+            lowerText.includes('no') ||
+            lowerText.includes('ver menú') ||
+            lowerText.includes('quiero') ||
+            lowerText.includes('dame') ||
+            lowerText.includes('pedir') ||
+            lowerText.includes('ordenar') ||
+            lowerText.includes('btn_1') ||
+            (lowerText === 'btn_1')
+        ) {
 
             return {
                 text: "❌ Orden cancelada. ¿Quieres empezar de nuevo?",
@@ -293,8 +307,9 @@ export async function handleCheckoutFlow(
         }
 
         // Accept multiple confirmation phrases
-        const confirmPhrases = ['confirmar', 'sí', 'si', 'ok', 'okay', 'yes', 'ya', 'dale', 'listo', 'btn_0'];
-        const isConfirmed = confirmPhrases.some(phrase => lowerText.includes(phrase));
+        // FIX: Use Regex for strict word matching to avoid "sin", "sinn", etc. identifying as "si"
+        const confirmRegex = /\b(confirmar|s[íi]|ok|okay|yes|ya|dale|listo|btn_0)\b/i;
+        const isConfirmed = confirmRegex.test(lowerText);
 
         if (!isConfirmed) {
             return {
@@ -308,7 +323,7 @@ export async function handleCheckoutFlow(
             return { text: "Error: Producto no encontrado." };
         }
 
-        const { items } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice);
+        const { items } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice, session.cart || []);
 
         // --- PRE-ORDER CHECK ---
         const { open } = await getBusinessHours();
@@ -381,8 +396,32 @@ export async function handleCheckoutFlow(
     return { text: "Error en el flujo de checkout." };
 }
 
-function calculateCheckoutSummary(product: any, selections: Record<number, number[]>, totalPrice: number) {
-    let summary = `* ${product.name}* `;
+function calculateCheckoutSummary(product: any, selections: Record<number, number[]>, totalPrice: number, cart: any[] = []) {
+    let summary = `*${product.name}*`;
+
+    // CUSTOM ORDER (CART CHECKOUT)
+    if (product.slug === 'custom-order' && cart.length > 0) {
+        let items: any[] = [];
+        summary += "\n";
+        cart.forEach(item => {
+            summary += `\n• ${item.quantity}x ${item.name} ($${item.price})`;
+            items.push({
+                product_id: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                type: "product"
+            });
+        });
+
+        return {
+            total: totalPrice,
+            summary,
+            items: items
+        };
+    }
+
+    // SINGLE PRODUCT CONFIG
     const itemsJson: any = {
         name: product.name,
         productType: product.type || 'bowl',
@@ -394,9 +433,9 @@ function calculateCheckoutSummary(product: any, selections: Record<number, numbe
         const selectedOptions = step.options.filter((o: any) => selectedOptionIds.includes(o.id));
 
         if (selectedOptions.length > 0) {
-            summary += `\n\n * ${step.label}:* `;
-            const optionNames = selectedOptions.map((o: any) => `• ${o.name} `).join('\n');
-            summary += `\n${optionNames} `;
+            summary += `\n\n*${step.label}:*`;
+            const optionNames = selectedOptions.map((o: any) => `• ${o.name}`).join('\n');
+            summary += `\n${optionNames}`;
 
             itemsJson[step.name || step.label] = selectedOptions.map((o: any) => o.name);
         }

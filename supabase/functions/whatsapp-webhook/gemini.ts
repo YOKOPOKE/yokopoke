@@ -240,7 +240,11 @@ export async function generateSalesResponse(
        - **CRITICAL**: If they explicitly say "I want X", "Dame X", "Agrega X", you MUST return a "server_action" to add it.
        - CONFIRM the addition in the text: "¡Listo! Agregué las Gyozas a tu orden. 🥟"
        - Describe it deliciously.
-    
+       
+       - **IMPORTANT**: If the user ALSO asked a question (e.g. "Add Gyozas + What drinks?"), YOU MUST ANSWER THE QUESTION IN THE TEXT. 
+         - Do NOT just offer a button. List the options briefly in the text.
+         - Example: "Agregué las Gyozas. De tomar tenemos Coca, Agua, y Calpico. ¿Cual prefieres?"
+
     4. IF USER WANTS TO CUSTOMIZE ("Sin cebolla", "Armar"):
        - Redirect to Web Builder: https://yokopoke.mx/#product-selector
        - DO NOT start building in chat.

@@ -69,6 +69,17 @@ export async function getAllProducts(): Promise<Product[]> {
 }
 
 export async function getProductWithSteps(slug: string): Promise<ProductTree | null> {
+    // VIRTUAL PRODUCT FOR CART CHECKOUT
+    if (slug === 'custom-order') {
+        return {
+            id: 999999,
+            name: "Tu Pedido 🛒",
+            slug: "custom-order",
+            base_price: 0,
+            active: true,
+            steps: []
+        };
+    }
     return getProductBySlug(slug) as Promise<ProductTree | null>;
 }
 

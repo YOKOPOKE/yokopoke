@@ -568,6 +568,20 @@ export async function processMessage(from: string, text: string): Promise<void> 
     // --- HUMAN MODE (The "Pausa" Button) ---
     const lowerText = text.toLowerCase().trim();
 
+    // --- EMERGENCY RESET (The "Nuclear" Option) ---
+    if (lowerText === '/reset' || lowerText === '/restart' || lowerText === 'resetear') {
+        console.log(`🚨 MANUAL RESET TRIGGERED for ${from}`);
+        await clearSession(from);
+        // Update LOCAL session immediately
+        session.mode = 'NORMAL';
+        session.checkoutState = undefined;
+        session.builderState = undefined;
+        session.isProcessing = false;
+
+        await sendWhatsApp(from, { text: "🔄 Sesión reiniciada forzosamente. Intenta de nuevo." });
+        return;
+    }
+
     // 1. Activation (Resume)
     if (lowerText === 'reanudar' || lowerText === 'bot' || lowerText === 'activar' || lowerText === 'modo bot') {
         if (session.mode === 'PAUSED') {
@@ -628,23 +642,12 @@ export async function processMessage(from: string, text: string): Promise<void> 
         if (!isOpen) {
             console.log(`🔒 Restaurant closed (${currentHour}:00, Open: ${open}-${close}) for ${from}`);
 
-            // Exception: Pre-Order intent or explicit "Sí"
-            const isPreOrderIntent = lowerText.match(/\b(sí|si|ordenar|pedir|quiero|armar)\b/);
-
-            // Allow basic info queries? User said "el bot responde que estamos fuera de servicio pero si quiere le puede tomar la orden"
-            // So we ALWAYS show closed message UNLESS they are confirming the order?
-            // "peo si es antes de las 2, el bot responde que estamos fuera de servicio"
-            // "pero si quiere le puede tomar la orden" -> "Escribe Sí"
-
-            if (isPreOrderIntent) {
-                // Pass through to standard flow (Checkout/Ordering)
-            } else {
-                const openTimeStr = `${open > 12 ? open - 12 : open}:00 ${open >= 12 ? 'PM' : 'AM'}`;
-                await sendWhatsApp(from, {
-                    text: `😴 *¡Shhh! Los ingredientes están durmiendo...* 🐟💤\n\nEstamos cerrados en este momento.\nHorario: *${openTimeStr} - ${close > 12 ? close - 12 : close}:00 PM*.\n\n✨ *¿Quieres dejar tu pedido listo?*\nPuedo tomar tu orden ahora y la cocinamos en cuanto abramos. �\n\n➡️ Escribe *"Sí"* para comenzar.`
-                });
-                return;
-            }
+            const openTimeStr = `${open > 12 ? open - 12 : open}:00 ${open >= 12 ? 'PM' : 'AM'}`;
+            // NEW FRIENDLY CLOSED MESSAGE (Platform Focused)
+            await sendWhatsApp(from, {
+                text: `👋 ¡Hola! Estamos cerrados en este momento 🌙.\n\nPuedes *adelantar tu pedido* para las *${openTimeStr}* directamente en nuestra Web App: 👇\n\n📲 *https://yokopoke.mx*\n\n¡Es más rápido y sin esperas! 🍣✨\n\n¡Nos vemos pronto! 👋`
+            });
+            return;
         }
     } catch (e) {
         console.error("Error checking business hours:", e);
@@ -700,10 +703,11 @@ export async function processMessage(from: string, text: string): Promise<void> 
         timestamp: Date.now()
     });
 
-    // 2. Watchdog: Break Stale Locks (>30s)
-    if (session.isProcessing && session.processingStart && (Date.now() - session.processingStart > 30000)) {
-        console.warn(`🐕 Watchdog: Breaking stale lock for ${from}`);
+    // 2. Watchdog: Break Stale Locks (>10s)
+    if (session.isProcessing && session.processingStart && (Date.now() - session.processingStart > 10000)) {
+        console.warn(`🐕 Watchdog: Breaking stale lock for ${from} (>10s)`);
         session.isProcessing = false;
+        // Proceed to acquire lock
     }
 
     // 3. Check Lock (Non-blocking return)
@@ -776,6 +780,10 @@ export async function processMessage(from: string, text: string): Promise<void> 
             // Clear session if checkout completed or cancelled
             if (response.text.includes('ORDEN CONFIRMADA') || response.text.includes('cancelada')) {
                 await clearSession(from);
+                // FIX: Update LOCAL session to prevent finally block from overwriting DB with STALE session
+                session.mode = 'NORMAL';
+                session.checkoutState = undefined;
+                session.builderState = undefined;
             } else {
                 await updateSession(from, session);
             }
@@ -949,40 +957,10 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 return; // STOP HERE.
             }
 
-            // Legacy fallthrough for keyword matching if AI fails but text has keywords
-            else if (aggregatedText.toLowerCase().includes('menu') || aggregatedText.toLowerCase().includes('menú')) {
-                // ... handled by above if AI is smart, but keeping as fallback if AI says 'CHAT' but user said 'Menu' logic is weird.
-                // Actually, if AI says CHAT for "Quiero ver el menú", sales response might handle it or we should force category filter.
-                // START_BUILDER or CHECKOUT handled separately.
-                // Let's rely on Sales Agent for generic "Menu" in textual conversation if not CATEGORY_FILTER.
-                // But strictly, if user types "Menu", we want the list. 
+            // Legacy fallthrough REMOVED. relying on analyzeIntent (CATEGORY_FILTER or CHAT)
+            // to handle "menu" requests appropriately without hijacking ADD_TO_CART flows.
 
-                // Let's execute the GENERIC MENU logic again here to be safe
-                console.log("📂 Keyword 'Menu' detected -> Sending Category List");
-                const cats = await prodService.getCategories();
-                const rows = [
-                    { id: "armar_poke", title: "🥗 Armar un Poke", description: "Crea tu poke ideal" }
-                ];
-                cats.forEach(c => {
-                    rows.push({
-                        id: `cat_${c.id}`,
-                        title: `${c.name}`,
-                        description: c.description ? c.description.substring(0, 60) : "Ver productos"
-                    });
-                });
-
-                await sendListMessage(from, {
-                    header: "🥗 Menú Yoko Poke",
-                    body: "¿Qué se te antoja hoy? Selecciona una categoría:",
-                    footer: "Yoko Poke",
-                    buttonText: "Ver Categorías",
-                    sections: [{
-                        title: "Nuestro Menú",
-                        rows: rows.slice(0, 10)
-                    }]
-                });
-                return;
-            } else if (geminiResponse.intent === 'CHECKOUT') {
+            else if (geminiResponse.intent === 'CHECKOUT') {
                 // --- CHECKOUT INIT ---
                 console.log("💳 Intent is CHECKOUT -> Starting Checkout Flow");
 
@@ -1081,19 +1059,31 @@ export async function processMessage(from: string, text: string): Promise<void> 
                         description: r.description?.substring(0, 72) || "" // Max 72 chars
                     }));
 
-                    await sendListMessage(from, {
+                    const success = await sendListMessage(from, {
                         header: "Menú Yoko Poke",
                         body: salesRes.text || "Selecciona una opción del menú:",
                         footer: "Toca el botón para ver más 👇",
                         buttonText: "Ver Opciones",
                         sections: [
                             {
-                                title: salesRes.listData.title || "Productos",
+                                title: (salesRes.listData.title || "Productos").substring(0, 24),
                                 rows: rows
                             }
                         ]
                     });
-                    // Stop here, list sent
+
+                    if (!success) {
+                        // Fallback to TEXT/BUTTONS if List fails
+                        console.warn("⚠️ List Message Failed. Fallback to Standard Response.");
+                        const response = {
+                            text: salesRes.text,
+                            useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0,
+                            buttons: salesRes.suggested_actions?.slice(0, 2)
+                        };
+                        if (salesRes.show_image_url) await sendWhatsAppImage(from, salesRes.show_image_url, "");
+                        await sendWhatsApp(from, response);
+                    }
+                    // Stop here
                 } else {
                     // Fallback to text/buttons
                     const response = {
@@ -1113,13 +1103,16 @@ export async function processMessage(from: string, text: string): Promise<void> 
         await updateSession(from, session);
 
     } catch (error) {
-        // RELEASE LOCK ON ERROR TOO
-        session.isProcessing = false;
-        session.activeThreadId = undefined;
-        await updateSession(from, session);
-
         console.error("🔥 FATAL BOT ERROR:", error);
         await sendWhatsApp(from, { text: "😰 Ups, tuve un pequeño mareo. ¿Me lo repites por favor?" });
+    } finally {
+        // RELEASE LOCK ALWAYS
+        // adaptable for early returns
+        if (session.isProcessing) {
+            session.isProcessing = false;
+            session.activeThreadId = undefined;
+            await updateSession(from, session);
+        }
     }
 }
 
@@ -1631,17 +1624,8 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string) 
 // --- AUTOMATION: CRON JOBS ---
 // Run daily at 14:00 CDMX (20:00 UTC)
 // --- AUTOMATION: CRON JOBS ---
-// Run daily at 14:00 CDMX (20:00 UTC)
-if (typeof Deno.cron === 'function') {
-    Deno.cron("Notify Pre-Orders Daily", "0 20 * * *", async () => {
-        console.log("⏰ Running Automated Pre-Order Notification (20:00 UTC / 14:00 CDMX)");
-        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-        const result = await notifyPreOrders(supabase);
-        console.log("✅ Cron Job Finished:", result);
-    });
-} else {
-    console.warn("⚠️ Deno.cron API not available in this runtime. Automated pre-order notifications will not run.");
-}
+// Note: This is now handled by Supabase pg_cron (Database).
+// See: supabase/migrations/20260211150000_enable_pg_cron.sql
 
 async function notifyPreOrders(supabase: any) {
     console.log("🔔 Triggering Pre-Order Notifications...");
