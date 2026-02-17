@@ -151,24 +151,26 @@ export async function analyzeIntent(
        - Productos fijos: "Pokes de la Casa" (Spicy Tuna, Yoko Especial, etc), "Bebidas", "Postres", "Entradas", "Sushi Burgers".
        - Si dice "dame un spicy tuna" -> ADD_TO_CART.
        - Si dice "spicy tuna" (nombre exacto del producto) -> ADD_TO_CART.
-       - Si dice "y también unas gyozas" (CONTEXTO: ya pidió algo) -> ADD_TO_CART.
 
-    3. Detectar si quiere VER UNA CATEGORÍA o EL MENÚ (CATEGORY_FILTER).
+    3. Detectar si el usuario quiere ARMAR/PERSONALIZAR un poke (START_BUILDER).
+       - Keywords: "armar", "personalizar", "crear mi propio", "mediano", "grande", "poke armado".
+       - NOTA: La personalización es EXCLUSIVA en la web. Devuelve START_BUILDER para redirigir.
+
+    4. Detectar si quiere VER UNA CATEGORÍA o EL MENÚ (CATEGORY_FILTER).
        - Si dice "ver menú", "la carta", "qué tienes": CATEGORY_FILTER (sin keyword).
        - Si dice "ver bebidas", "postres", "entradas": CATEGORY_FILTER (keyword="bebida", "postre").
        
-    4. Detectar PREGUNTAS ABIERTAS o SOLICITUD DE RECOMENDACIONES (CHAT).
+    5. Detectar PREGUNTAS ABIERTAS o SOLICITUD DE RECOMENDACIONES (CHAT).
        - Si dice "¿qué me recomiendas?", "algo rico", "no sé qué pedir": CHAT.
        - Si dice "algo de beber" (sin especificar, pidiendo sugerencia): CHAT (para que el Bot venda).
-       - Si dice "cuales son los ingredientes del Spicy Tuna?": CHAT.
 
-    5. Detectar si quiere FINALIZAR PEDIDO (CHECKOUT).
+    6. Detectar si quiere FINALIZAR PEDIDO (CHECKOUT).
        - Keywords: "finalizar", "pagar", "confirmar", "checkout", "ya está", "eso es todo".
        - SI TIENE ITEMS EN EL CARRITO y dice "listo" o "ya", es CHECKOUT.
        
     Salida JSON esperada:
     {
-        "intent": "ADD_TO_CART" | "CATEGORY_FILTER" | "INFO" | "STATUS" | "CHAT" | "CHECKOUT",
+        "intent": "ADD_TO_CART" | "CATEGORY_FILTER" | "INFO" | "STATUS" | "CHAT" | "CHECKOUT" | "START_BUILDER",
         "product_hint": string | null,
         "category_keyword": string | null
     }
