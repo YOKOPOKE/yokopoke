@@ -1107,13 +1107,12 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 }
                 // Note: lock released in the common cleanup below, don't return early
             } else if (geminiResponse.intent === 'START_BUILDER') {
-                // Builder desactivado en WhatsApp → CTA URL Button a la web con PHONE PARAM
-                await sendCtaUrlButton(
-                    from,
-                    "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nElige cada ingrediente a tu gusto y ve fotos de todo en nuestro *Constructor Interactivo*.",
-                    "Abrir Constructor 🚀",
-                    `https://yokopoke.mx/?phone=${from}&source=whatsapp#product-selector`
-                );
+                // Builder desactivado en WhatsApp → Enviar Link Texto (WebView friendly)
+                await sendWhatsApp(from, {
+                    text: "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nElige cada ingrediente a tu gusto y ve fotos de todo en nuestro *Constructor Interactivo*.\n\n👇 *Entra aquí:*\nhttps://yokopoke.mx/?phone=" + from + "&source=whatsapp#product-selector",
+                    useButtons: true,
+                    buttons: ['Ver Menú', 'Pokes de la Casa']
+                });
             } else {
                 // GENERAL CHAT / SALES
                 let salesRes;
@@ -1258,13 +1257,14 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
     if (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke'))) {
         console.log("🌊 Triggering Web Redirect for Armar Poke");
 
-        await sendCtaUrlButton(
-            from,
-            "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nElige cada ingrediente a tu gusto y arma tu combinación perfecta en nuestro *Constructor Interactivo*.",
-            "Abrir Constructor 🚀",
-            `https://yokopoke.mx/?phone=${from}&source=whatsapp#product-selector`
-        );
-        return { text: "" }; // Handled via CTA
+        // CHANGE: Use plain text + link to encourage WebView (Internal Browser) instead of Chrome
+        // CTA URL buttons often force external browser.
+        await sendWhatsApp(from, {
+            text: "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nElige cada ingrediente a tu gusto y arma tu combinación perfecta en nuestro *Constructor Interactivo*.\n\n👇 *Entra aquí:*\nhttps://yokopoke.mx/?phone=" + from + "&source=whatsapp#product-selector",
+            useButtons: true,
+            buttons: ['Ver Menú']
+        });
+        return { text: "" }; // Handled
     }
 
     // 0. If in Builder Mode OR Checkout (and NOT resetting), DISABLE other Fast Pass triggers
@@ -1332,13 +1332,12 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
 
     // 4. Direct Size (Text OR List ID)
     if (['poke mediano', 'poke grande', 'poke-mediano', 'poke-grande'].includes(lowerText)) {
-        // REDIRECT TO WEB via CTA URL Button
-        await sendCtaUrlButton(
-            from,
-            "🥗 *¡Excelente elección!* ✨\n\nPersonaliza tu Poke justo como te gusta en nuestro *Constructor Interactivo*. ¡Elige cada ingrediente!",
-            "Personalizar mi Poke 🚀",
-            `https://yokopoke.mx/?phone=${from}&source=whatsapp#product-selector`
-        );
+        // REDIRECT TO WEB via Text Link
+        await sendWhatsApp(from, {
+            text: "🥗 *¡Excelente elección!* ✨\n\nPersonaliza tu Poke justo como te gusta en nuestro *Constructor Interactivo*. ¡Elige cada ingrediente!\n\n👇 *Personalizar aquí:*\nhttps://yokopoke.mx/?phone=" + from + "&source=whatsapp#product-selector",
+            useButtons: true,
+            buttons: ['Ver Menú de la Casa']
+        });
         return { text: "" }; // Handled via CTA
     }
 
