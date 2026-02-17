@@ -17,7 +17,10 @@ async function generateContentWithRetry(input: any, retries = 2): Promise<any> {
         } catch (e: any) {
             console.warn(`⚠️ Gemini API Error (Attempt ${i + 1}/${retries + 1}):`, e.message);
 
-            // Don't retry client errors (4xx) usually, but kept simple for now.
+            // Don't retry client errors (4xx) — they won't succeed on retry
+            const status = e.status || e.httpStatusCode || 0;
+            if (status >= 400 && status < 500) throw e;
+
             // If it's the last attempt, throw.
             if (i === retries) throw e;
 
@@ -140,12 +143,12 @@ export async function analyzeIntent(
     MENSAJE ACTUAL DEL USUARIO: "${userText}"
     
     Tus objetivos son:
-    1. Detectar si el usuario quiere ARMAR/PERSONALIZAR un poke desde cero (START_BUILDER).
-       - Keywords: "armar", "personalizar", "crear mi propio", "mediano", "grande", "burger" (Sushi Burgers son armables).
-       - ESTO ES SOLO PARA "POKE MEDIANO", "POKE GRANDE" O "SUSHI BURGERS".
+    1. Detectar si el usuario quiere ARMAR/PERSONALIZAR un poke (CHAT).
+       - Keywords: "armar", "personalizar", "crear mi propio", "mediano", "grande".
+       - NOTA: La personalización se hace en la web (yokopoke.mx). Devuelve CHAT para que el bot le redirija.
     
     2. Detectar si quiere pedir un producto DEL MENU / CARTA (ADD_TO_CART).
-       - Productos fijos: "Pokes de la Casa" (Spicy Tuna, Yoko Especial, etc), "Bebidas", "Postres", "Entradas".
+       - Productos fijos: "Pokes de la Casa" (Spicy Tuna, Yoko Especial, etc), "Bebidas", "Postres", "Entradas", "Sushi Burgers".
        - Si dice "dame un spicy tuna" -> ADD_TO_CART.
        - Si dice "spicy tuna" (nombre exacto del producto) -> ADD_TO_CART.
        - Si dice "y también unas gyozas" (CONTEXTO: ya pidió algo) -> ADD_TO_CART.
@@ -157,7 +160,7 @@ export async function analyzeIntent(
     4. Detectar PREGUNTAS ABIERTAS o SOLICITUD DE RECOMENDACIONES (CHAT).
        - Si dice "¿qué me recomiendas?", "algo rico", "no sé qué pedir": CHAT.
        - Si dice "algo de beber" (sin especificar, pidiendo sugerencia): CHAT (para que el Bot venda).
-       - Si dice "cuales son los ingredientes del Spicy Tuna?": CHAT/INFO.
+       - Si dice "cuales son los ingredientes del Spicy Tuna?": CHAT.
 
     5. Detectar si quiere FINALIZAR PEDIDO (CHECKOUT).
        - Keywords: "finalizar", "pagar", "confirmar", "checkout", "ya está", "eso es todo".
@@ -165,9 +168,9 @@ export async function analyzeIntent(
        
     Salida JSON esperada:
     {
-        "intent": "START_BUILDER" | "ADD_TO_CART" | "CATEGORY_FILTER" | "INFO" | "STATUS" | "CHAT" | "CHECKOUT",
-        "product_hint": string | null, // Ej: "coca cola", "spicy tuna", "mediano"
-        "category_keyword": string | null // Ej: "bebida", "postre"
+        "intent": "ADD_TO_CART" | "CATEGORY_FILTER" | "INFO" | "STATUS" | "CHAT" | "CHECKOUT",
+        "product_hint": string | null,
+        "category_keyword": string | null
     }
     `;
 
@@ -191,8 +194,13 @@ export interface SalesResponse {
         title: string;
         rows: Array<{ id: string, title: string, description: string }>;
     };
-    // NEW: Action to perform on the server state
+    // Server actions — supports MULTIPLE products
     server_action?: {
+        type: "ADD_TO_CART";
+        products: Array<{ id: string, name: string, price: number, quantity: number }>;
+    };
+    // Legacy single-product support (backwards compat)
+    server_action_legacy?: {
         type: "ADD_TO_CART";
         product: { id: string, name: string, price: number, quantity: number };
     };
@@ -205,7 +213,9 @@ export async function generateSalesResponse(
     userText: string,
     menuContext: string,
     productList: any[],
-    cart: any[] = [] // NEW: Cart Context
+    cart: any[] = [],
+    conversationHistory: Array<{ role: string, text: string }> = [],
+    customerProfile?: { favorites?: string[], orderCount?: number }
 ): Promise<SalesResponse> {
     if (!model) return { text: "¡Hola! ¿En qué te puedo ayudar hoy? 🥗" };
 
@@ -215,62 +225,65 @@ export async function generateSalesResponse(
         .join("\n");
 
     const cartDescription = cart.length > 0
-        ? `User has in cart: ${cart.map(c => c.name).join(', ')}.`
+        ? `User has in cart: ${cart.map(c => `${c.name} ($${c.price})`).join(', ')}. Total: $${cart.reduce((s: number, c: any) => s + (c.price * (c.quantity || 1)), 0)}`
         : "Cart is empty.";
 
-    // Sales Prompt
+    // 🧠 Conversation History Context
+    const historyContext = conversationHistory.length > 0
+        ? `CONVERSACIÓN RECIENTE (para entender contexto):\n${conversationHistory.map(m => `${m.role === 'user' ? '👤 Cliente' : '🤖 Poki'}: ${m.text.substring(0, 100)}`).join('\n')}\n`
+        : "";
+
+    // 👤 Customer DNA Context
+    const customerContext = customerProfile
+        ? `PERFIL DEL CLIENTE: ${customerProfile.orderCount || 0} pedidos previos. Favoritos: ${customerProfile.favorites?.join(', ') || 'Nuevo cliente'}.`
+        : "CLIENTE NUEVO (primera vez).";
+
+    // 💰 Upselling Rules
+    const hasFood = cart.some(c => !['Coca Cola', 'Calpico', 'Agua', 'Limonada'].some(b => c.name.includes(b)));
+    const hasBeverage = cart.some(c => ['Coca Cola', 'Calpico', 'Agua', 'Limonada'].some(b => c.name.includes(b)));
+
+    let upsellHint = '';
+    if (hasFood && !hasBeverage) upsellHint = 'UPSELL: El cliente tiene comida pero NO bebida. Sugiere sutilmente una bebida.';
+    else if (cart.length === 0) upsellHint = 'UPSELL: Carrito vacío. Si recomiendas algo, empieza por los más vendidos.';
+
+    // Sales Prompt (compacted for clarity)
     const prompt = `
-    ACT AS: "Poki", the virtual assistant of Yoko Poke.
-    GOAL: SELL and GUIDE to the WEBSITE (https://yokopoke.mx).
+    ERES: "Poki", el asistente virtual de Yoko Poke.
+    OBJETIVO: VENDER y GUIAR. Sé amable, breve y cálido.
+    IDIOMA: Español siempre. Tutea al cliente.
     
-    MENU:
+    ${historyContext}
+    MENÚ DISPONIBLE:
     ${menuContext}
     
-    IMAGES:
+    IMÁGENES:
     ${productImagesContext}
     
-    CONTEXT:
+    CONTEXTO:
     ${cartDescription}
-    USER MESSAGE: "${userText}"
+    ${customerContext}
+    ${upsellHint}
+    MENSAJE DEL USUARIO: "${userText}"
     
-    INSTRUCTIONS:
-    1. REACT DIRECTLY to the user. Do NOT provide "options" or "suggestions for what to say".
-    2. SPEAK AS THE BOT. Do NOT break character.
-    3. IF USER ASKS FOR MENU ITEM (e.g. "Spicy Tuna", "Bebidas", "Postre", "Gyozas"):
-       - **CRITICAL**: If they explicitly say "I want X", "Dame X", "Agrega X", you MUST return a "server_action" to add it.
-       - CONFIRM the addition in the text: "¡Listo! Agregué las Gyozas a tu orden. 🥟"
-       - Describe it deliciously.
-       
-       - **IMPORTANT**: If the user ALSO asked a question (e.g. "Add Gyozas + What drinks?"), YOU MUST ANSWER THE QUESTION IN THE TEXT. 
-         - Do NOT just offer a button. List the options briefly in the text.
-         - Example: "Agregué las Gyozas. De tomar tenemos Coca, Agua, y Calpico. ¿Cual prefieres?"
+    REGLAS:
+    1. RESPONDE DIRECTO como Poki. No ofrezcas "opciones de respuesta". No rompas personaje.
+    2. USA EL HISTORIAL para entender contexto (ej: "Y de tomar?" = pregunta por bebidas).
+    3. Si el usuario PIDE UN PRODUCTO ("Dame X", "Agrega X", "Quiero X"):
+       - OBLIGATORIO: devuelve "server_action" con los productos en el array "products".
+       - Si pide VARIOS ("gyozas y una coca"), agrega TODOS.
+       - Confirma: "¡Listo! Agregué X y Y a tu orden. 🥟🥤"
+       - Si TAMBIÉN hizo una pregunta, RESPÓNDELA en el texto.
+    4. Si quiere PERSONALIZAR ("armar", "sin cebolla"): Redirige a https://yokopoke.mx/#product-selector. NO armes en chat.
+    5. Si pide VER MENÚ o CATEGORÍA: devuelve "listData" con title, rows (id, title, description). Max 10 items.
+    6. Si quiere FINALIZAR ("eso es todo", "listo"): Responde "¡Perfecto! ¿A qué nombre registro tu pedido?"
+    7. DESPUÉS DE AGREGAR AL CARRITO: incluye "Ver Menú" en suggested_actions. Si tiene comida pero no bebida, sugiere una.
 
-    4. IF USER WANTS TO CUSTOMIZE ("Sin cebolla", "Armar"):
-       - Redirect to Web Builder: https://yokopoke.mx/#product-selector
-       - DO NOT start building in chat.
-
-    5. IF USER ASKS FOR GENERAL MENU or CATEGORY (e.g. "Show menu", "What drinks?", "Postres"):
-       - RETURN A LIST STRUCTURE in the JSON.
-       - "listData" must include: title (Category Name), rows (Array of {id: "Product Name", title: "Product Name + Emoji", description: "Price + Short Ingredients"}).
-       - Max 10 items per list.
-    
-    6. IF USER WANTS TO CHECKOUT ("Finalizar", "Eso es todo"):
-       - Text: "¡Perfecto! ¿A qué nombre registro tu pedido?" (No buttons).
-    
-    CRITICAL OUTPUT RULE: 
-    - Output ONLY the JSON. 
-    - DO NOT say "Here is the response". 
-    - DO NOT provide "Option 1" and "Option 2". Just pick the best one.
-
-    OUTPUT JSON:
+    SALIDA: SOLO el JSON. Sin preámbulos. Sin "Opción 1/2".
     {
-      "text": "Response text",
-      "show_image_url": "URL or null",
-      "suggested_actions": ["MAX 2"],
-      "server_action": {
-          "type": "ADD_TO_CART",
-          "product": { "id": "slug", "name": "Name", "price": 120, "quantity": 1 }
-      } (OR null)
+      "text": "Respuesta",
+      "show_image_url": "URL o null",
+      "suggested_actions": ["MAX 2 botones"],
+      "server_action": { "type": "ADD_TO_CART", "products": [{ "id": "slug", "name": "Nombre", "price": 120, "quantity": 1 }] } | null
     }
     `;
 
@@ -279,7 +292,15 @@ export async function generateSalesResponse(
         const text = result.response.text();
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         const cleanText = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(cleanText);
+        const parsed = JSON.parse(cleanText);
+
+        // Backwards compat: if AI returns old single-product format, convert to array
+        if (parsed.server_action?.product && !parsed.server_action?.products) {
+            parsed.server_action.products = [parsed.server_action.product];
+            delete parsed.server_action.product;
+        }
+
+        return parsed;
     } catch (e) {
         console.error("Gemini Sales Error:", e);
         return { text: "¡Hola! Se me antojó un Poke. ¿Quieres ver el menú o armar uno? 🥗" };
@@ -345,20 +366,34 @@ TAREA: Genera un saludo alegre:
 CONTEXTO: Cliente nuevo
 OBJETIVO: GENERAR EL MENSAJE FINAL EXACTO. NO DATOS ADICIONALES.
 
-TAREA: Genera un saludo AMIGABLE con EMOJIS que use EXACTAMENTE este mensaje base:
-"Hola! Soy Poki 🐼, tu asistente virtual. En un momento te atendemos. Te invitamos a ordenar en nuestra plataforma yokopoke.mx 📲 ¡Es más fácil y rápido!"
+TAREA: Genera un saludo AMIGABLE con EMOJIS (moderados) que use esta estructura:
+1. Saludo cálido: "¡Hola! Soy Poki 🐼, tu asistente virtual."
+2. Push Web (Principal): "Te invito a ordenar en nuestra web yokopoke.mx 📲 ¡Es mucho más fácil, rápido y puedes ver fotos de todo! 📸"
+3. Opción Chat (Secundaria): "O si prefieres, puedo tomar tu orden por aquí. ¿Qué se te antoja hoy? 🥢"
 
 REGLAS CRÍTICAS DE SALIDA:
 1. SOLO ENTREGA EL MENSAJE. NADA MÁS.
 2. NO ESCRIBAS "Aquí tienes una propuesta".
 3. NO ESCRIBAS "Opción recomendada".
-4. NO EXPLIQUES POR QUÉ ELEGISTE EL MENSAJE.
-5. SI ESCRIBES ALGO QUE NO SEA EL SALUDO, EL SISTEMA FALLARÁ.
+4. SI ESCRIBES ALGO QUE NO SEA EL SALUDO, EL SISTEMA FALLARÁ.
 `;
         }
 
         const result = await generateContentWithRetry(historyContext);
-        const greeting = result.response.text().trim();
+        let greeting = result.response.text().trim();
+
+        // Strip common Gemini meta-text preamble
+        const metaPrefixes = [
+            /^(Aqu[ií] tienes?[^:]*:|Claro[^:]*:|Opci[oó]n[^:]*:|Propuesta[^:]*:|Respuesta[^:]*:)\s*/i,
+            /^(Here'?s?[^:]*:|Option[^:]*:)\s*/i
+        ];
+        for (const regex of metaPrefixes) {
+            greeting = greeting.replace(regex, '');
+        }
+        // Strip wrapping quotes if Gemini wrapped the whole thing
+        if (greeting.startsWith('"') && greeting.endsWith('"')) {
+            greeting = greeting.slice(1, -1);
+        }
 
         return greeting || "¡Hola! ¿Qué se te antoja hoy? 🥗";
 

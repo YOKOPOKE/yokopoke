@@ -33,6 +33,18 @@ export default function OrderFlow() {
             }
         }
 
+        // Bridge: Capture WA Params
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const phone = params.get('phone');
+            const source = params.get('source');
+            if (phone) {
+                console.log('📱 WhatsApp Bridge Active for:', phone);
+                sessionStorage.setItem('yoko_wa_phone', phone);
+            }
+            if (source) sessionStorage.setItem('yoko_wa_source', source);
+        }
+
         const handleOpenBuilder = (e: any) => {
             console.log('Event Received via Listener:', e.detail);
             const mode = e.detail?.mode || 'bowl';

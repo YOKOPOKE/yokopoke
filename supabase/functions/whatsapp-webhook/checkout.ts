@@ -26,6 +26,35 @@ export async function handleCheckoutFlow(
 
     // Step 1: COLLECT_NAME
     if (checkout.checkoutStep === 'COLLECT_NAME') {
+        // 👤 PRE-FILL: If we know the customer from history, offer to reuse name
+        if (!checkout.customerName && session.customerProfile?.name) {
+            // First entry: show the pre-fill suggestion (only once)
+            if (!checkout.namePromptShown) {
+                checkout.namePromptShown = true;
+                return {
+                    text: `👤 ¿A nombre de *${session.customerProfile.name}* como siempre?`,
+                    useButtons: true,
+                    buttons: ['Sí', 'Otro nombre']
+                };
+            }
+            // User responded to the pre-fill prompt
+            if (lowerText === 'btn_0' || lowerText === 'sí' || lowerText === 'si' || lowerText === 'yes') {
+                // User confirmed the suggested name
+                checkout.customerName = session.customerProfile.name;
+                checkout.checkoutStep = 'COLLECT_DELIVERY';
+                return {
+                    text: `✅ Perfecto, *${checkout.customerName}*!\n\n📍 ¿Cómo lo quieres recibir?`,
+                    useButtons: true,
+                    buttons: ['🏪 Recoger en tienda', '🚗 Envío a domicilio']
+                };
+            }
+            if (lowerText === 'no' || lowerText === 'otro nombre' || lowerText === 'btn_1' || lowerText === 'otro') {
+                // User wants a different name — fall through to normal name collection
+            } else {
+                // User typed a different name directly — accept it
+            }
+        }
+
         if (text.length < 2) {
             return {
                 text: "⚠️ Por favor escribe un nombre válido (mínimo 2 caracteres)."
@@ -38,7 +67,7 @@ export async function handleCheckoutFlow(
         // Use Button Message instead of old buttons
         if (sendButtonMessageFn) {
             await sendButtonMessageFn(from, {
-                body: `✅ Perfecto, * ${checkout.customerName}* !\n\n📍 ¿Cómo lo quieres recibir ? `,
+                body: `✅ Perfecto, *${checkout.customerName}*!\n\n📍 ¿Cómo lo quieres recibir?`,
                 buttons: [
                     { id: 'pickup', title: '🏪 Recoger' },
                     { id: 'delivery', title: '🚗 Domicilio' }
@@ -49,7 +78,7 @@ export async function handleCheckoutFlow(
 
         // Fallback
         return {
-            text: `✅ Perfecto, * ${checkout.customerName}* !\n\n📍 ¿Cómo lo quieres recibir ? `,
+            text: `✅ Perfecto, *${checkout.customerName}*!\n\n📍 ¿Cómo lo quieres recibir?`,
             useButtons: true,
             buttons: ['🏪 Recoger en tienda', '🚗 Envío a domicilio']
         };
@@ -86,19 +115,24 @@ export async function handleCheckoutFlow(
         }
 
         checkout.deliveryMethod = deliveryMethod;
-        checkout.deliveryMethod = deliveryMethod;
 
         if (deliveryMethod === 'pickup') {
             checkout.checkoutStep = 'COLLECT_PICKUP_TIME';
 
             const slots = await generateTimeSlots();
-            const buttons = slots.slice(0, 3).map(s => `🕒 ${s} `); // Max 3 buttons
+            if (slots.length === 0) {
+                return {
+                    text: "🌙 *¡Ya cerramos por hoy!* 🌙\n\nNuestras entregas son hasta las 10:00 PM.\nPor favor intenta de nuevo mañana. ☀️",
+                    useButtons: true,
+                    buttons: ['Ver Menú']
+                };
+            }
 
-            // If more than 3 slots, maybe just show 3 for now or list body
+            const buttons = slots.slice(0, 3).map(s => `🕒 ${s} `); // Max 3 buttons
             const slotsText = slots.map(s => `• ${s} `).join('\n');
 
             return {
-                text: `📍 * Recoger en Tienda *\n\n¿A qué hora pasas por tu pedido ? (Estimado) \n\n${slotsText} \n\nSelecciona una hora 👇`,
+                text: `📍 *Recoger en Tienda*\n\n¿A qué hora pasas por tu pedido? (Estimado)\n\n${slotsText}\n\nSelecciona una hora 👇`,
                 useButtons: true,
                 buttons: slots.slice(0, 3)
             };
@@ -112,7 +146,7 @@ export async function handleCheckoutFlow(
 
 
             return {
-                text: `📍 * Envío a Domicilio *\n\nPara ubicarte mejor, ¿puedes compartir tu ubicación ?\n\n👉 Toca el botón de adjuntar(+) y selecciona "Ubicación" 📍`
+                text: `📍 *Envío a Domicilio*\n\nPara ubicarte mejor, ¿puedes compartir tu ubicación?\n\n👉 Toca el botón de adjuntar (+) y selecciona "Ubicación" 📍`
             };
         }
     }
@@ -124,9 +158,10 @@ export async function handleCheckoutFlow(
         // If we are here, it means index.ts didn't intercept a 'location' message.
         // Instead, the user sent TEXT. We accept this text as the address.
 
-        if (text.length < 5) {
+        // Stricter validation: Length > 8 and must contain spaces (e.g. "Calle 123")
+        if (text.length < 8 || !text.includes(' ')) {
             return {
-                text: "📍 Para envío a domicilio, por favor comparte tu *Ubicación* de WhatsApp (📎) o escribe tu dirección completa."
+                text: "📍 Para envío a domicilio, por favor comparte tu *Ubicación* de WhatsApp (📎) o escribe tu dirección completa (calle, número, colonia)."
             };
         }
 
@@ -137,7 +172,7 @@ export async function handleCheckoutFlow(
         checkout.checkoutStep = 'COLLECT_REFERENCES';
 
         return {
-            text: `📝 Dirección guardada: ${checkout.fullAddress} \n\n¿Alguna referencia para el repartidor ?\n(Ej: "Portón blanco", "Junto al Oxxo")`
+            text: `📝 Dirección guardada: ${checkout.fullAddress}\n\n¿Alguna referencia para el repartidor?\n(Ej: "Portón blanco", "Junto al Oxxo")`
         };
     }
 
@@ -153,7 +188,7 @@ export async function handleCheckoutFlow(
         checkout.checkoutStep = 'COLLECT_REFERENCES';
 
         return {
-            text: `✅ Dirección guardada: ${checkout.fullAddress} \n\n📝 Ahora, ¿alguna referencia para encontrarte ?\n(Ej: "Casa azul, portón negro", "Edificio X, Apto 202")`
+            text: `✅ Dirección guardada: ${checkout.fullAddress}\n\n📝 Ahora, ¿alguna referencia para encontrarte?\n(Ej: "Casa azul, portón negro", "Edificio X, Apto 202")`
         };
     }
 
@@ -163,23 +198,23 @@ export async function handleCheckoutFlow(
         checkout.checkoutStep = 'COLLECT_PICKUP_TIME'; // Reuse time slot for delivery ETA
 
         const slots = await generateTimeSlots();
+
+        if (slots.length === 0) {
+            return {
+                text: "🌙 *¡Ups! Ya cerramos por hoy.* 🌙\n\nNuestras entregas son hasta las 10:00 PM.\nPor favor intenta de nuevo mañana. ☀️",
+                useButtons: true,
+                buttons: ['Ver Menú']
+            };
+        }
+
         return {
-            text: `✅ Referencias guardadas.\n\n🕒 ¿A qué hora te gustaría recibir tu pedido ?\n\n${slots.map(s => `• ${s}`).join('\n')} \n\nSelecciona una hora 👇`,
+            text: `✅ Referencias guardadas.\n\n🕒 ¿A qué hora te gustaría recibir tu pedido?\n\n${slots.map(s => `• ${s}`).join('\n')}\n\nSelecciona una hora 👇`,
             useButtons: true,
             buttons: slots.slice(0, 3)
         };
     }
 
-    // ... inside processCheckoutStep ...
 
-    // Step 2.5: COLLECT_PICKUP_TIME
-    // Handling INITIAL Request
-    if (checkout.deliveryMethod === 'pickup' && checkout.checkoutStep === 'COLLECT_PICKUP_TIME' && !text) {
-        // This block handles the "entry" into this state if called recursively, 
-        // but usually we set state and return immediately in previous step.
-        // We'll rely on the "previous step" logic to render this.
-        // WAITING FOR INPUT...
-    }
 
     if (checkout.checkoutStep === 'COLLECT_PICKUP_TIME') {
         const lowerText = text.toLowerCase().trim();
@@ -200,9 +235,9 @@ export async function handleCheckoutFlow(
                     sections: [{
                         title: "Tarde / Noche",
                         rows: slots.map(s => ({
-                            id: `time_${s} `,
+                            id: `time_${s}`,
                             title: s,
-                            description: "Recoger en tienda"
+                            description: checkout.deliveryMethod === 'delivery' ? 'Entrega a domicilio' : 'Recoger en tienda'
                         }))
                     }]
                 }
@@ -213,11 +248,10 @@ export async function handleCheckoutFlow(
         let selectedTime = text.replace(/[🕒✅]/g, '').trim();
         if (selectedTime.startsWith('time_')) selectedTime = selectedTime.replace('time_', '');
 
-        // Basic validation: must look like time or be in list
-        // We accept it if logic flow got here
-
-        if (selectedTime.length < 3) {
-            // Re-render INITIAL view
+        // Validate time: must match time format (e.g. "12:30 p. m." or "1:00 PM")
+        const timeRegex = /\d{1,2}:\d{2}/;
+        if (selectedTime.length < 3 || !timeRegex.test(selectedTime)) {
+            // Not a valid time — re-render time slots
             const shortSlots = await generateTimeSlots(20, 6, 20); // Next 2 hours, 20 min intervals
 
             if (shortSlots.length === 0) {
@@ -229,7 +263,7 @@ export async function handleCheckoutFlow(
             }
 
             return {
-                text: `📍 * Recoger en Tienda *\n\n¿A qué hora pasas por tu pedido ? `,
+                text: `📍 *Recoger en Tienda*\n\n¿A qué hora pasas por tu pedido?`,
                 useList: true,
                 listData: {
                     header: "Horario de Recogida",
@@ -240,7 +274,7 @@ export async function handleCheckoutFlow(
                         {
                             title: "Lo antes posible",
                             rows: shortSlots.map(s => ({
-                                id: `time_${s} `,
+                                id: `time_${s}`,
                                 title: s,
                                 description: "Sugerido"
                             }))
@@ -271,13 +305,13 @@ export async function handleCheckoutFlow(
         if (checkout.deliveryMethod === 'delivery') {
             // Show start of address
             const shortAddr = checkout.fullAddress ? checkout.fullAddress.substring(0, 30) + (checkout.fullAddress.length > 30 ? '...' : '') : 'Ubicación compartida';
-            deliveryText = `🚗 Domicilio\n📍 ${shortAddr} \n🕒 Hora: ${checkout.pickupTime} `;
+            deliveryText = `🚗 Domicilio\n📍 ${shortAddr}\n🕒 Hora: ${checkout.pickupTime}`;
         } else {
-            deliveryText = `🏪 Recoger: ${checkout.pickupTime} `;
+            deliveryText = `🏪 Recoger: ${checkout.pickupTime}`;
         }
 
         return {
-            text: `📋 * RESUMEN DE TU ORDEN *\n\n${summary} \n\n------------------\n👤 * Nombre:* ${checkout.customerName} \n${deliveryText} \n💰 * TOTAL: $${total}*\n------------------\n\n¿Todo correcto ? Responde * Sí * para confirmar o * Cancelar * para reiniciar.`
+            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto? Responde *Sí* para confirmar o *Cancelar* para reiniciar.`
         };
     }
 
@@ -289,15 +323,13 @@ export async function handleCheckoutFlow(
             lowerText.includes('cancelar') ||
             lowerText.includes('modificar') ||
             lowerText.includes('cambiar') ||
-            lowerText.includes('no') ||
+            /\bno\b/.test(lowerText) ||
             lowerText.includes('ver menú') ||
-            lowerText.includes('quiero') ||
-            lowerText.includes('dame') ||
-            lowerText.includes('pedir') ||
-            lowerText.includes('ordenar') ||
-            lowerText.includes('btn_1') ||
-            (lowerText === 'btn_1')
+            lowerText.includes('btn_1')
         ) {
+            // Reset checkout mode so next message routes normally
+            session.mode = 'NORMAL';
+            session.checkoutState = undefined;
 
             return {
                 text: "❌ Orden cancelada. ¿Quieres empezar de nuevo?",
@@ -317,6 +349,15 @@ export async function handleCheckoutFlow(
             };
         }
 
+        // 🛡️ IDEMPOTENCY GUARD: Prevent duplicate orders from double-taps
+        if (checkout.orderConfirmed) {
+            return {
+                text: "✅ ¡Tu orden ya fue registrada! Estamos preparándola. 🍣",
+                useButtons: true,
+                buttons: ['Menú Principal']
+            };
+        }
+
         // CREATE ORDER IN DATABASE
         const product = await getProductWithSteps(checkout.productSlug);
         if (!product) {
@@ -327,8 +368,13 @@ export async function handleCheckoutFlow(
 
         // --- PRE-ORDER CHECK ---
         const { open } = await getBusinessHours();
-        const mxTime = new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" });
-        const currentHour = new Date(mxTime).getHours();
+        // Use reliable timezone method (same as generateTimeSlots)
+        const mxFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Mexico_City',
+            hour: '2-digit', hour12: false
+        });
+        const mxParts = mxFormatter.formatToParts(new Date());
+        const currentHour = parseInt(mxParts.find(p => p.type === 'hour')?.value || '0');
         const isPreOrder = currentHour < open;
 
         const orderData = {
@@ -346,29 +392,63 @@ export async function handleCheckoutFlow(
             created_at: new Date().toISOString()
         };
 
-        const { error } = await supabase.from('orders').insert(orderData);
-        if (error) {
-            console.error("Error inserting order:", error);
+        // 🛡️ Mark as confirmed BEFORE insert to prevent race conditions
+        checkout.orderConfirmed = true;
+        const { updateSession } = await import('./session.ts');
+        await updateSession(from, session);
+
+        // RETRY LOGIC FOR DB INSERT (Hardening)
+        let attempt = 0;
+        let success = false;
+        let insertError = null;
+
+        while (attempt < 2 && !success) {
+            const { error } = await supabase.from('orders').insert(orderData);
+            if (!error) {
+                success = true;
+            } else {
+                console.error(`Error inserting order (Attempt ${attempt + 1}):`, error);
+                insertError = error;
+                attempt++;
+                if (attempt < 2) await new Promise(r => setTimeout(r, 500)); // Wait 500ms
+            }
+        }
+
+        if (!success) {
+            // Rollback idempotency flag so user can retry
+            checkout.orderConfirmed = false;
+            await updateSession(from, session);
             return {
-                text: "⚠️ Hubo un error al procesar tu orden. Por favor intenta de nuevo."
+                text: "⚠️ Hubo un problema de conexión al guardar tu pedido. Por favor intenta confirmar nuevamente escribiendo *Sí*."
             };
         }
 
         // --- SAVE TO HISTORY FOR RECOMMENDATIONS (Robustness) ---
         try {
             const { saveOrderToHistory } = await import('./orderHistoryService.ts');
-            await saveOrderToHistory({
-                phone: from,
-                customer_name: checkout.customerName,
-                items: [{
+
+            // Save REAL cart items (not generic product name) for "Lo de siempre"
+            const historyItems = (session.cart && session.cart.length > 0)
+                ? session.cart.map(i => ({
+                    id: String(i.id),
+                    name: i.name,
+                    price: i.price,
+                    quantity: i.quantity
+                }))
+                : [{
                     id: String(product.slug || product.id),
                     name: product.name,
                     price: checkout.totalPrice,
                     quantity: 1
-                }],
+                }];
+
+            await saveOrderToHistory({
+                phone: from,
+                customer_name: checkout.customerName,
+                items: historyItems,
                 total: checkout.totalPrice,
                 delivery_method: checkout.deliveryMethod,
-                location: checkout.location, // GPS
+                location: checkout.location,
                 full_address: checkout.fullAddress,
                 address_references: checkout.addressReferences
             });
@@ -387,7 +467,7 @@ export async function handleCheckoutFlow(
         }
 
         return {
-            text: `🎉 *¡ORDEN CONFIRMADA! * 🎉\n\n🧾 EN PREPARACIÓN.Su orden ha sido confirmada y nuestra cocina ha comenzado a prepararla.\n\n¡Gracias por tu preferencia, ${checkout.customerName} ! 🥢✨`,
+            text: `🎉 *¡ORDEN CONFIRMADA!* 🎉\n\n🧾 EN PREPARACIÓN. ¡Tu orden ha sido confirmada y nuestra cocina ya está trabajando en ella!\n\n¡Gracias por tu preferencia, ${checkout.customerName}! 🥢✨`,
             useButtons: true,
             buttons: ['Menú Principal']
         };
@@ -397,25 +477,28 @@ export async function handleCheckoutFlow(
 }
 
 function calculateCheckoutSummary(product: any, selections: Record<number, number[]>, totalPrice: number, cart: any[] = []) {
-    let summary = `*${product.name}*`;
+    let summary = cart.length > 0 && product.slug === 'custom-order' ? `*Tu Pedido*` : `*${product.name}*`;
 
     // CUSTOM ORDER (CART CHECKOUT)
     if (product.slug === 'custom-order' && cart.length > 0) {
         let items: any[] = [];
+        let recalcTotal = 0;
         summary += "\n";
         cart.forEach(item => {
-            summary += `\n• ${item.quantity}x ${item.name} ($${item.price})`;
+            const qty = item.quantity || 1;
+            summary += `\n• ${qty}x ${item.name} ($${item.price})`;
+            recalcTotal += item.price * qty;
             items.push({
                 product_id: item.id,
                 name: item.name,
                 price: item.price,
-                quantity: item.quantity,
+                quantity: qty,
                 type: "product"
             });
         });
 
         return {
-            total: totalPrice,
+            total: recalcTotal, // Recalculate from actual items, not stale totalPrice
             summary,
             items: items
         };
@@ -449,8 +532,20 @@ function calculateCheckoutSummary(product: any, selections: Record<number, numbe
 }
 
 async function generateTimeSlots(startOffsetMinutes = 20, count = 5, interval = 20): Promise<string[]> {
-    const now = new Date();
-    const mxDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+    // Get current time in Mexico City timezone using reliable method
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Mexico_City',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    const getPart = (type: string) => parseInt(parts.find(p => p.type === type)?.value || '0');
+
+    const mxDate = new Date(
+        getPart('year'), getPart('month') - 1, getPart('day'),
+        getPart('hour'), getPart('minute'), getPart('second')
+    );
     const currentHour = mxDate.getHours();
 
     // Fetch Business Hours
@@ -459,7 +554,6 @@ async function generateTimeSlots(startOffsetMinutes = 20, count = 5, interval = 
     // Pre-Order Logic: If before Open, start at Open Time
     if (currentHour < open) {
         mxDate.setHours(open, 0, 0, 0);
-        // Reset minutes? Yes, exactly at opening.
     } else {
         // Normal Logic: Start from now + offset
         mxDate.setMinutes(mxDate.getMinutes() + startOffsetMinutes);

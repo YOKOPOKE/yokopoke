@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export interface BuilderState {
     stepIndex: number;
@@ -29,6 +30,8 @@ export interface CheckoutState {
     };
     fullAddress?: string; // "Calle X #123, Colonia Y"
     addressReferences?: string; // "Casa azul, portón negro"
+    orderConfirmed?: boolean; // Idempotency: prevent duplicate order inserts
+    namePromptShown?: boolean; // Track if pre-fill name prompt was shown
 }
 
 export interface SessionData {
@@ -69,13 +72,28 @@ export interface SessionData {
         customization?: string; // "Sin cebolla", "Extra spicy"
     }>;
 
+    // 🧠 CONVERSATION MEMORY (last 5 exchanges for Gemini context)
+    conversationHistory?: Array<{
+        role: 'user' | 'bot';
+        text: string;
+        timestamp: number;
+    }>;
+
+    // 👤 CUSTOMER DNA (cached profile for personalization)
+    customerProfile?: {
+        name?: string;           // From last checkout
+        favorites?: string[];    // Top 3 ordered items
+        lastAddress?: string;    // Pre-fill checkout
+        lastAddressRefs?: string;
+        orderCount?: number;     // How many times they've ordered
+    };
+
     // Legacy / Other
     bufferUntil?: number;
     activeThreadId?: string;
 }
 
 export async function getSession(phone: string): Promise<SessionData> {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     try {
         const { data, error } = await supabase
@@ -96,7 +114,6 @@ export async function getSession(phone: string): Promise<SessionData> {
 }
 
 export async function updateSession(phone: string, newState: SessionData) {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     try {
         const { error } = await supabase

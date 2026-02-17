@@ -4,7 +4,7 @@
 // import { serve } from "https://deno.land/std@0.168.0/http/server.ts"; // DEPRECATED
 import { getSession, updateSession, clearSession, SessionData, BuilderState, CheckoutState } from './session.ts';
 import { getProductWithSteps, getCategories, getAllProducts, getCategoryByName, getProductsByCategory, ProductTree, ProductStep } from './productService.ts';
-import { interpretSelection, analyzeIntent, generateConversationalResponse } from './gemini.ts';
+import { analyzeIntent } from './gemini.ts';
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getBusinessHours } from './configService.ts';
 
@@ -59,9 +59,6 @@ export interface ButtonMessage {
 const INTENTS: Record<string, string[]> = {
     greeting: ['hola', 'buenos días', 'hey', 'hi'],
     menu: ['menú', 'menu', 'carta'],
-    help: ['ayuda', 'comandos'],
-    hours: ['horario', 'abren'],
-    location: ['ubicación', 'donde'],
 };
 
 async function handleBasicIntent(context: MessageContext): Promise<BotResponse | null> {
@@ -76,31 +73,37 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
     // Personalized Greeting (Premium UX)
     try {
         const { getOrderHistory } = await import('./orderHistoryService.ts');
-        const { generatePersonalizedGreeting } = await import('./gemini.ts');
-
         const history = await getOrderHistory(context.from, 5);
+
+        // #7 FIX: Skip expensive Gemini call for new users with no history
+        if (history.length === 0) {
+            return {
+                text: "¡Hola! Soy *POKI* 🐼, tu asistente virtual.\n\nTe invito a ordenar en nuestra web *yokopoke.mx* 📲 ¡Es mucho más fácil, rápido y puedes ver fotos de todo! 📸\n\nO si prefieres, puedo tomar tu orden por aquí. ¿Qué se te antoja hoy? 🥢"
+            };
+        }
+
+        const { generatePersonalizedGreeting } = await import('./gemini.ts');
         const greeting = await generatePersonalizedGreeting(context.from, history as any);
 
         return {
-            text: greeting + "\n\n🌐 https://yokopoke.mx",
-            useButtons: true,
-            buttons: ['Ver Menú']
+            text: greeting + "\n\n🌐 https://yokopoke.mx"
         };
     } catch (e) {
         console.error("Error generating personalized greeting:", e);
         // Fallback Greeting
         return {
-            text: "¡Konnichiwa! 🎌 Bienvenido a *Yoko Poke* 🥣\n\nSoy *POKI*, tu asistente personal 🤖✨.\n\nEstoy aquí para tomar tu orden volando 🚀. Puedes pedirme lo que quieras por chat o ordenar en nuestra página \n🌐 https://yokopoke.mx\n\n¿Qué se te antoja probar hoy? 🥢",
-            useButtons: true,
-            buttons: ['Ver Menú']
+            text: "¡Hola! Soy *POKI* 🐼, tu asistente virtual.\n\nTe invito a ordenar en nuestra web *yokopoke.mx* 📲 ¡Es mucho más fácil, rápido y puedes ver fotos de todo! 📸\n\nO si prefieres, puedo tomar tu orden por aquí. ¿Qué se te antoja hoy? 🥢"
         };
     }
 }
 
-
 /**
+ * BUILDER DESACTIVADO EN WHATSAPP — Solo funciona en la web (yokopoke.mx)
+ * Se conserva el código por si se necesita en el futuro.
+ * 
  * Logic for the step-by-step Poke Builder
  */
+/*
 async function handleBuilderFlow(context: MessageContext, session: SessionData, aggregatedText: string): Promise<BotResponse> {
     if (!session.builderState) return { text: "Error de sesión." };
 
@@ -254,257 +257,257 @@ async function handleBuilderFlow(context: MessageContext, session: SessionData, 
                     return `${s.label}: ${stepNames}`;
                 })
                 .join(' | ');
-        } catch (e) {/* ignore */ }
+        } catch (e) {/* ignore * / }
 
-        // Use AI to generate conversational update
-        const conversationalText = await generateConversationalResponse(
-            currentStep.label || '',
-            selectedNames,
-            'Siguiente',
-            {
-                included: currentStep.included_selections || 1,
-                absolute: currentStep.max_selections || 'varios'
-            },
-            stepsSummary
-        );
+// Use AI to generate conversational update
+const conversationalText = await generateConversationalResponse(
+    currentStep.label || '',
+    selectedNames,
+    'Siguiente',
+    {
+        included: currentStep.included_selections || 1,
+        absolute: currentStep.max_selections || 'varios'
+    },
+    stepsSummary
+);
 
-        // --- EXTRA COST WARNING ---
-        let extraCostMsg = "";
-        const included = currentStep.included_selections || 0;
-        if (currentSelections.length > included) {
-            const extrasCount = currentSelections.length - included;
-            const extraTotal = extrasCount * (currentStep.price_per_extra || 0);
-            if (extraTotal > 0) {
-                extraCostMsg = `\n💰 Ojo: Llevas ${extrasCount} extra(s). +$${extraTotal}`;
-            }
+// --- EXTRA COST WARNING ---
+let extraCostMsg = "";
+const included = currentStep.included_selections || 0;
+if (currentSelections.length > included) {
+    const extrasCount = currentSelections.length - included;
+    const extraTotal = extrasCount * (currentStep.price_per_extra || 0);
+    if (extraTotal > 0) {
+        extraCostMsg = `\n💰 Ojo: Llevas ${extrasCount} extra(s). +$${extraTotal}`;
+    }
+}
+
+// --- BUILD LIST MESSAGE ---
+const stepIncluded = currentStep.included_selections || 0;
+const currentCount = currentSelections.length;
+const remainingIncluded = Math.max(0, stepIncluded - currentCount);
+
+// Determine if we can show "Next/Done" option
+const canAdvance = currentSelections.length > 0; // Simplified rule
+
+// Options List
+let listRows = currentStep.options.slice(0, 9).map(o => {
+    const isSelected = currentSelections.includes(o.id);
+    // Fix Pricing Display Logic
+    let displayPrice = "";
+    let baseExtra = currentStep.price_per_extra || 0;
+    let optExtra = o.price_extra || 0;
+
+    if (isSelected) {
+        // If selected, check if it was one of the free ones
+        const selectionIndex = currentSelections.indexOf(o.id);
+        // Note: accurate selection index relies on order preservation which we fixed in calc logic
+        // For display, we approximate.
+        if (selectionIndex < stepIncluded) {
+            // Covered by included. Only show if logic implies paying premium?
+            // Usually included covers Everything unless explicit rule. 
+            // Let's hide price if included to be cleaner.
+        } else {
+            const total = baseExtra + optExtra;
+            if (total > 0) displayPrice = `+$${total}`;
         }
-
-        // --- BUILD LIST MESSAGE ---
-        const stepIncluded = currentStep.included_selections || 0;
-        const currentCount = currentSelections.length;
-        const remainingIncluded = Math.max(0, stepIncluded - currentCount);
-
-        // Determine if we can show "Next/Done" option
-        const canAdvance = currentSelections.length > 0; // Simplified rule
-
-        // Options List
-        let listRows = currentStep.options.slice(0, 9).map(o => {
-            const isSelected = currentSelections.includes(o.id);
-            // Fix Pricing Display Logic
-            let displayPrice = "";
-            let baseExtra = currentStep.price_per_extra || 0;
-            let optExtra = o.price_extra || 0;
-
-            if (isSelected) {
-                // If selected, check if it was one of the free ones
-                const selectionIndex = currentSelections.indexOf(o.id);
-                // Note: accurate selection index relies on order preservation which we fixed in calc logic
-                // For display, we approximate.
-                if (selectionIndex < stepIncluded) {
-                    // Covered by included. Only show if logic implies paying premium?
-                    // Usually included covers Everything unless explicit rule. 
-                    // Let's hide price if included to be cleaner.
-                } else {
-                    const total = baseExtra + optExtra;
-                    if (total > 0) displayPrice = `+$${total}`;
-                }
-            } else {
-                // Not selected
-                if (remainingIncluded > 0) {
-                    // Start consuming included slots
-                    // If included covers base price, we only show premium extra
-                    if (optExtra > 0) displayPrice = `+$${optExtra}`;
-                } else {
-                    // Consumes extra slot
-                    const total = baseExtra + optExtra;
-                    if (total > 0) displayPrice = `+$${total}`;
-                }
-            }
-
-            const prefix = isSelected ? '✅ ' : '';
-            return {
-                id: o.id.toString(),
-                title: `${prefix}${o.name}`.substring(0, 24),
-                description: displayPrice
-            };
-        });
-
-        // Add "Next" Option if applicable
-        if (canAdvance) {
-            const isLastStep = state.stepIndex === product.steps.length - 1;
-            const nextLabel = isLastStep ? "✅ TERMINAR" : "➡️ SIGUIENTE";
-            const nextDesc = isLastStep ? "Finalizar armado" : "Ir al siguiente paso";
-
-            listRows.unshift({ // Add to TOP for visibility
-                id: "listo",
-                title: nextLabel,
-                description: nextDesc
-            });
-        }
-
-        // Build header with selections
-        let header = `${product.name}`;
-        if (selectedNames.length > 0) {
-            header = `✅ ${selectedNames.length} seleccionado(s)`;
-        }
-
-        // Build body
-        let body = conversationalText;
-        if (extraCostMsg) body += extraCostMsg;
+    } else {
+        // Not selected
         if (remainingIncluded > 0) {
-            body += `\n\n${remainingIncluded} más GRATIS`;
+            // Start consuming included slots
+            // If included covers base price, we only show premium extra
+            if (optExtra > 0) displayPrice = `+$${optExtra}`;
+        } else {
+            // Consumes extra slot
+            const total = baseExtra + optExtra;
+            if (total > 0) displayPrice = `+$${total}`;
         }
-
-        // Build rows variable for sendListMessage (using the listRows we just built, but cleaning properties)
-        // Wait, listRows already has structure {id, title, description}.
-        // The previous code had a redundant 'const rows =' block. I will use listRows directly but need to match section format.
-
-        // Try sending List Message
-        const success = await sendListMessage(context.from, {
-            header,
-            body: body.substring(0, 1024),
-            footer: "Yoko Poke",
-            buttonText: `Ver ${currentStep.label}`,
-            sections: [{
-                title: currentStep.label || 'Opciones',
-                rows: listRows.slice(0, 10) // Max 10 rows
-            }]
-        });
-
-        // Fallback to text if List failed
-        if (!success) {
-            const optionsList = currentStep.options.map(o => {
-                // Simplified fallback text logic
-                const check = currentSelections.includes(o.id) ? '✅ ' : '• ';
-                return `${check}${o.name}`;
-            }).join('\n');
-
-            return {
-                text: `${conversationalText}${extraCostMsg}\n\n*Elige para "${currentStep.label}":* (Incluye: ${stepIncluded})\n${optionsList}\n\nEscribe tu elección o "Listo" para continuar. 👇`,
-                useButtons: false
-            };
-        }
-
-        // List sent successfully - check if multi-selection and has selections
-        if (currentStep.max_selections && currentStep.max_selections > 1 && selectedNames.length > 0) {
-            // Send follow-up buttons for multi-selection
-            const isLastStep = state.stepIndex === product.steps.length - 1;
-            const doneBtn = isLastStep ? '✅ Terminar' : '➡️ Siguiente';
-
-            await sendButtonMessage(context.from, {
-                body: `${selectedNames.length} seleccionado(s).\n¿Qué quieres hacer?`,
-                buttons: [
-                    { id: 'agregar_mas', title: '➕ Agregar más' },
-                    { id: 'listo', title: doneBtn }
-                ]
-            });
-        }
-
-        return { text: "" }; // Already sent via List Message
     }
 
-    // --- MOVE NEXT ---
-    const nextIndex = state.stepIndex + 1;
+    const prefix = isSelected ? '✅ ' : '';
+    return {
+        id: o.id.toString(),
+        title: `${prefix}${o.name}`.substring(0, 24),
+        description: displayPrice
+    };
+});
 
-    if (nextIndex < product.steps.length) {
-        state.stepIndex = nextIndex;
-        await updateSession(context.from, session);
+// Add "Next" Option if applicable
+if (canAdvance) {
+    const isLastStep = state.stepIndex === product.steps.length - 1;
+    const nextLabel = isLastStep ? "✅ TERMINAR" : "➡️ SIGUIENTE";
+    const nextDesc = isLastStep ? "Finalizar armado" : "Ir al siguiente paso";
 
-        const nextStep = product.steps[nextIndex];
+    listRows.unshift({ // Add to TOP for visibility
+        id: "listo",
+        title: nextLabel,
+        description: nextDesc
+    });
+}
 
-        // AI Conversational transition
-        const prevSelectedNames = currentStep.options
-            .filter(o => currentSelections.includes(o.id))
-            .map(o => o.name);
+// Build header with selections
+let header = `${product.name}`;
+if (selectedNames.length > 0) {
+    header = `✅ ${selectedNames.length} seleccionado(s)`;
+}
 
-        const conversationalText = await generateConversationalResponse(
-            currentStep.label || '',
-            prevSelectedNames,
-            nextStep.label || '',
-            {
-                included: nextStep.included_selections || 1,
-                absolute: nextStep.max_selections || 'varios'
-            }
-        );
+// Build body
+let body = conversationalText;
+if (extraCostMsg) body += extraCostMsg;
+if (remainingIncluded > 0) {
+    body += `\n\n${remainingIncluded} más GRATIS`;
+}
 
-        // Send next step as List Message
-        const nextIncluded = nextStep.included_selections || 0;
+// Build rows variable for sendListMessage (using the listRows we just built, but cleaning properties)
+// Wait, listRows already has structure {id, title, description}.
+// The previous code had a redundant 'const rows =' block. I will use listRows directly but need to match section format.
 
-        // Build rows with pricing
-        const rows = nextStep.options.map(o => {
+// Try sending List Message
+const success = await sendListMessage(context.from, {
+    header,
+    body: body.substring(0, 1024),
+    footer: "Yoko Poke",
+    buttonText: `Ver ${currentStep.label}`,
+    sections: [{
+        title: currentStep.label || 'Opciones',
+        rows: listRows.slice(0, 10) // Max 10 rows
+    }]
+});
+
+// Fallback to text if List failed
+if (!success) {
+    const optionsList = currentStep.options.map(o => {
+        // Simplified fallback text logic
+        const check = currentSelections.includes(o.id) ? '✅ ' : '• ';
+        return `${check}${o.name}`;
+    }).join('\n');
+
+    return {
+        text: `${conversationalText}${extraCostMsg}\n\n*Elige para "${currentStep.label}":* (Incluye: ${stepIncluded})\n${optionsList}\n\nEscribe tu elección o "Listo" para continuar. 👇`,
+        useButtons: false
+    };
+}
+
+// List sent successfully - check if multi-selection and has selections
+if (currentStep.max_selections && currentStep.max_selections > 1 && selectedNames.length > 0) {
+    // Send follow-up buttons for multi-selection
+    const isLastStep = state.stepIndex === product.steps.length - 1;
+    const doneBtn = isLastStep ? '✅ Terminar' : '➡️ Siguiente';
+
+    await sendButtonMessage(context.from, {
+        body: `${selectedNames.length} seleccionado(s).\n¿Qué quieres hacer?`,
+        buttons: [
+            { id: 'agregar_mas', title: '➕ Agregar más' },
+            { id: 'listo', title: doneBtn }
+        ]
+    });
+}
+
+return { text: "" }; // Already sent via List Message
+    }
+
+// --- MOVE NEXT ---
+const nextIndex = state.stepIndex + 1;
+
+if (nextIndex < product.steps.length) {
+    state.stepIndex = nextIndex;
+    await updateSession(context.from, session);
+
+    const nextStep = product.steps[nextIndex];
+
+    // AI Conversational transition
+    const prevSelectedNames = currentStep.options
+        .filter(o => currentSelections.includes(o.id))
+        .map(o => o.name);
+
+    const conversationalText = await generateConversationalResponse(
+        currentStep.label || '',
+        prevSelectedNames,
+        nextStep.label || '',
+        {
+            included: nextStep.included_selections || 1,
+            absolute: nextStep.max_selections || 'varios'
+        }
+    );
+
+    // Send next step as List Message
+    const nextIncluded = nextStep.included_selections || 0;
+
+    // Build rows with pricing
+    const rows = nextStep.options.map(o => {
+        let displayPrice = "";
+        let baseExtra = nextStep.price_per_extra || 0;
+        let optExtra = o.price_extra || 0;
+
+        if (nextIncluded > 0) {
+            if (optExtra > 0) displayPrice = `+$${optExtra}`;
+        } else {
+            const totalExtra = baseExtra + optExtra;
+            if (totalExtra > 0) displayPrice = `+$${totalExtra}`;
+        }
+
+        return {
+            id: o.id.toString(),
+            title: o.name.substring(0, 24),
+            description: displayPrice || undefined
+        };
+    });
+
+    // Try sending List Message
+    const success = await sendListMessage(context.from, {
+        header: `${product.name}`,
+        body: `${conversationalText}\n\n${nextIncluded > 0 ? `${nextIncluded} incluido(s)` : ''}`.substring(0, 1024),
+        footer: "Yoko Poke",
+        buttonText: `Ver ${nextStep.label}`,
+        sections: [{
+            title: nextStep.label || 'Opciones',
+            rows: rows.slice(0, 10)
+        }]
+    });
+
+    // Fallback to text if List failed
+    if (!success) {
+        const optionsList = nextStep.options.map(o => {
             let displayPrice = "";
             let baseExtra = nextStep.price_per_extra || 0;
             let optExtra = o.price_extra || 0;
 
             if (nextIncluded > 0) {
-                if (optExtra > 0) displayPrice = `+$${optExtra}`;
+                if (optExtra > 0) displayPrice = ` (+$${optExtra})`;
             } else {
                 const totalExtra = baseExtra + optExtra;
-                if (totalExtra > 0) displayPrice = `+$${totalExtra}`;
+                if (totalExtra > 0) displayPrice = ` (+$${totalExtra})`;
             }
-
-            return {
-                id: o.id.toString(),
-                title: o.name.substring(0, 24),
-                description: displayPrice || undefined
-            };
-        });
-
-        // Try sending List Message
-        const success = await sendListMessage(context.from, {
-            header: `${product.name}`,
-            body: `${conversationalText}\n\n${nextIncluded > 0 ? `${nextIncluded} incluido(s)` : ''}`.substring(0, 1024),
-            footer: "Yoko Poke",
-            buttonText: `Ver ${nextStep.label}`,
-            sections: [{
-                title: nextStep.label || 'Opciones',
-                rows: rows.slice(0, 10)
-            }]
-        });
-
-        // Fallback to text if List failed
-        if (!success) {
-            const optionsList = nextStep.options.map(o => {
-                let displayPrice = "";
-                let baseExtra = nextStep.price_per_extra || 0;
-                let optExtra = o.price_extra || 0;
-
-                if (nextIncluded > 0) {
-                    if (optExtra > 0) displayPrice = ` (+$${optExtra})`;
-                } else {
-                    const totalExtra = baseExtra + optExtra;
-                    if (totalExtra > 0) displayPrice = ` (+$${totalExtra})`;
-                }
-                return `• ${o.name}${displayPrice}`;
-            }).join('\n');
-
-            return {
-                text: `${conversationalText}\n\n*Opciones de ${nextStep.label}:* (Incluye: ${nextIncluded})\n${optionsList}\n\nEscribe tu elección 👇`,
-                useButtons: false
-            };
-        }
-
-        return { text: "" }; // Already sent via List Message
-    } else {
-        // --- ALL STEPS FINISHED - START CHECKOUT ---
-        const { total, summary, items } = calculateOrderDetails(product, state.selections);
-
-        // Transition to CHECKOUT mode
-        session.mode = 'CHECKOUT';
-        session.checkoutState = {
-            productSlug: state.productSlug,
-            selections: state.selections,
-            totalPrice: total,
-            checkoutStep: 'COLLECT_NAME'
-        };
-        delete session.builderState;
-        await updateSession(context.from, session);
+            return `• ${o.name}${displayPrice}`;
+        }).join('\n');
 
         return {
-            text: `🎉 ¡Excelente! Tu ${product.name} está casi listo.\n\nAntes de enviarlo a cocina, necesito algunos datos:\n\n👤 *¿Cuál es tu nombre?*`,
+            text: `${conversationalText}\n\n*Opciones de ${nextStep.label}:* (Incluye: ${nextIncluded})\n${optionsList}\n\nEscribe tu elección 👇`,
             useButtons: false
         };
     }
+
+    return { text: "" }; // Already sent via List Message
+} else {
+    // --- ALL STEPS FINISHED - START CHECKOUT ---
+    const { total, summary, items } = calculateOrderDetails(product, state.selections);
+
+    // Transition to CHECKOUT mode
+    session.mode = 'CHECKOUT';
+    session.checkoutState = {
+        productSlug: state.productSlug,
+        selections: state.selections,
+        totalPrice: total,
+        checkoutStep: 'COLLECT_NAME'
+    };
+    delete session.builderState;
+    await updateSession(context.from, session);
+
+    return {
+        text: `🎉 ¡Excelente! Tu ${product.name} está casi listo.\n\nAntes de enviarlo a cocina, necesito algunos datos:\n\n👤 *¿Cuál es tu nombre?*`,
+        useButtons: false
+    };
+}
 }
 
 function calculateOrderDetails(product: ProductTree, selections: Record<number, number[]>) {
@@ -556,6 +559,9 @@ function calculateOrderDetails(product: ProductTree, selections: Record<number, 
 
     return { total, summary, items: [itemsJson] };
 }
+
+
+*/
 
 /**
  * Main Logic
@@ -633,9 +639,13 @@ export async function processMessage(from: string, text: string): Promise<void> 
     // --- BUSINESS HOURS CHECK (Premium UX) ---
     try {
         const { open, close } = await getBusinessHours();
-        const comitenTime = new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' });
-        const comitenDate = new Date(comitenTime);
-        const currentHour = comitenDate.getHours();
+        // Use reliable timezone method (consistent with checkout.ts)
+        const bizHoursFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Mexico_City',
+            hour: '2-digit', hour12: false
+        });
+        const bizHoursParts = bizHoursFormatter.formatToParts(new Date());
+        const currentHour = parseInt(bizHoursParts.find(p => p.type === 'hour')?.value || '0');
 
         const isOpen = currentHour >= open && currentHour < close;
 
@@ -666,129 +676,158 @@ export async function processMessage(from: string, text: string): Promise<void> 
         console.log(`⏰ Session expired for ${from}. Resetting...`);
         await clearSession(from);
         session = await getSession(from); // Reload fresh session
-
-        // Force Greeting for expired session
-        const greeting = await handleBasicIntent({ from, text, timestamp: now });
-        if (greeting) {
-            await sendWhatsApp(from, greeting);
-            await updateSession(from, { ...session, lastInteraction: now });
-            return;
-        }
+        // Don't return — let the message flow through the normal batching below
     }
-    const instantResponse = await handleInstantKeywords(from, lowerText, session);
+
+    // --- SMART MESSAGE BATCHING ---
+    // Queue the message immediately in DB
+    if (!session.pendingMessages) session.pendingMessages = [];
+    session.pendingMessages.push({
+        text: text,
+        type: 'text',
+        timestamp: Date.now()
+    });
+
+    // Watchdog: Break Stale Locks (>25s)
+    if (session.isProcessing && session.processingStart && (Date.now() - session.processingStart > 25000)) {
+        console.warn(`🐕 Watchdog: Breaking stale lock for ${from} (>25s)`);
+        session.isProcessing = false;
+    }
+
+    // If locked, just queue and exit — the active processor will pick it up
+    if (session.isProcessing) {
+        console.log(`🔒 Session locked for ${from}. Queued message #${session.pendingMessages.length}.`);
+        await updateSession(from, session);
+        return;
+    }
+
+    // Acquire Lock
+    session.isProcessing = true;
+    session.processingStart = Date.now();
+    await updateSession(from, session);
+
+    // ⏳ DEBOUNCE: Wait 10s for rapid-fire messages to accumulate
+    await new Promise(r => setTimeout(r, 10000));
+
+    // Re-read session to get ALL queued messages
+    let workSession = await getSession(from);
+    const queue = workSession.pendingMessages || [];
+
+    // Sort by timestamp (FIFO) and deduplicate
+    queue.sort((a, b) => a.timestamp - b.timestamp);
+    const uniqueQueue = queue.filter((item, index, self) =>
+        index === 0 || item.text !== self[index - 1].text
+    );
+
+    // Join all messages into one text
+    const aggregatedText = uniqueQueue.map(q => q.text).join(". ");
+    console.log(`🔥 Processing Batch (${uniqueQueue.length} msgs): "${aggregatedText}"`);
+
+    // Clear Queue but Keep Lock
+    workSession.pendingMessages = [];
+    workSession.lastInteraction = Date.now();
+    session = workSession;
+
+    // Guard: If queue was empty (race condition), release lock and exit
+    if (!aggregatedText || aggregatedText.trim().length === 0) {
+        console.warn(`⚠️ Empty queue after debounce for ${from}. Releasing lock.`);
+        session.isProcessing = false;
+        await updateSession(from, session);
+        return;
+    }
+
+    // --- FAST PASS: Try instant keywords on the FULL aggregated text ---
+    const aggregatedLower = aggregatedText.toLowerCase();
+    const instantResponse = await handleInstantKeywords(from, aggregatedLower, session);
     if (instantResponse) {
         console.log(`⚡ Fast Pass: Keyword Match for ${from}`);
         await sendWhatsApp(from, instantResponse);
 
         // Reset Strategies if needed (e.g. for Armar Poke)
-        if (lowerText.includes('armar') && lowerText.includes('poke')) {
+        if (aggregatedLower.includes('armar') && aggregatedLower.includes('poke')) {
             await clearSession(from);
+            // Must return immediately — if we continue, we'll overwrite the cleared session
+            return;
         }
 
-        // Clean buffer leftovers
-        if (session.bufferUntil) {
-            session.pendingMessages = [];
-            session.bufferUntil = 0;
-            await updateSession(from, session);
-        }
-        return;
-    }
-
-    // --- ROBUST CONCURRENCY (Senior Implementation) ---
-    // 1. Add to DB Queue securely
-    if (!session.pendingMessages) session.pendingMessages = [];
-    session.pendingMessages.push({
-        text: text,
-        type: 'text', // Simplification: Primary text flow
-        timestamp: Date.now()
-    });
-
-    // 2. Watchdog: Break Stale Locks (>10s)
-    if (session.isProcessing && session.processingStart && (Date.now() - session.processingStart > 10000)) {
-        console.warn(`🐕 Watchdog: Breaking stale lock for ${from} (>10s)`);
+        // 🧠 Save to conversation memory
+        if (!session.conversationHistory) session.conversationHistory = [];
+        session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
+        if (instantResponse.text) session.conversationHistory.push({ role: 'bot', text: instantResponse.text, timestamp: now });
+        if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+        session.lastInteraction = now;
         session.isProcessing = false;
-        // Proceed to acquire lock
-    }
-
-    // 3. Check Lock (Non-blocking return)
-    if (session.isProcessing) {
-        console.log(`🔒 Session locked for ${from}. Queued message.`);
+        session.activeThreadId = undefined;
         await updateSession(from, session);
         return;
     }
 
-    // 4. Acquire Lock
-    session.isProcessing = true;
-    session.processingStart = Date.now();
-    await updateSession(from, session);
-
-    // 5. Short Debounce (Allow rapid-fire messages to accumulate)
-    await new Promise(r => setTimeout(r, 1500));
-
-    // 6. Fetch Aggregate Payload
-    let workSession = await getSession(from);
-    const queue = workSession.pendingMessages || [];
-
-    // Sort by timestamp (FIFO)
-    queue.sort((a, b) => a.timestamp - b.timestamp);
-
-    // Filter duplicates (De-bounce)
-    const uniqueQueue = queue.filter((item, index, self) =>
-        index === 0 || item.text !== self[index - 1].text
-    );
-
-    // Join Texts
-    const aggregatedText = uniqueQueue.map(q => q.text).join(". ");
-
-    console.log(`🔥 Processing Batch (${uniqueQueue.length}): "${aggregatedText}"`);
-
-    // 7. Clear Queue but Keep Lock
-    workSession.pendingMessages = [];
-    workSession.lastInteraction = Date.now();
-
-    // Pass control to main logic with updated session
-    session = workSession;
-    // session.isProcessing is still true, will be cleared at end of logic
-
-
     // --- DETERMINISTIC ROUTER (THE "CEREBELLUM") ---
+    let sessionCleared = false; // #2 FIX: Track if session was cleared to protect finally block
     try {
         // A. MODE-BASED ROUTING (Highest Priority)
         // If we are in a specific mode, we stay there until explicitly exited.
 
-        // 1. BUILDER MODE
+        // 1. BUILDER MODE — DESACTIVADO: El builder solo funciona en la web (yokopoke.mx)
+        // Si alguien llega aquí, se redirige al menú.
         if (session.mode === 'BUILDER' && session.builderState) {
-            console.log(`🏗 Processing Builder Flow for ${from}`);
-            const response = await handleBuilderFlow({ from, text: aggregatedText, timestamp: now }, session, aggregatedText);
-            await sendWhatsApp(from, response);
+            console.log(`🏗 Builder Mode detectado en WhatsApp — redirigiendo a web`);
+            await clearSession(from);
+            session.mode = 'NORMAL';
+            session.builderState = undefined;
+            session.isProcessing = false;
+            sessionCleared = true;
+            await sendWhatsApp(from, {
+                text: "🥗 Para armar tu Poke, usa nuestro constructor interactivo en la web:\n\n👉 https://yokopoke.mx/#product-selector\n\n¡Es más fácil y puedes ver fotos de todo! 📸",
+                useButtons: true,
+                buttons: ['Ver Menú']
+            });
+            return;
         }
 
         // 2. CHECKOUT MODE
         else if (session.mode === 'CHECKOUT' && session.checkoutState) {
             console.log(`💳 Processing Checkout Flow for ${from}`);
 
-            // Check for Exit Keywords
-            if (aggregatedText.toLowerCase().includes('cancelar') || aggregatedText.toLowerCase().includes('salir')) {
+            // Check for Exit Keywords (broad Spanish cancel detection)
+            const cancelKeywords = ['cancela', 'cancelar', 'cancelalo', 'no quiero', 'ya no', 'olvídalo', 'olvidalo', 'salir', 'dejalo', 'déjalo', 'no gracias'];
+            const checkoutLower = aggregatedText.toLowerCase();
+            if (cancelKeywords.some(k => checkoutLower.includes(k))) {
                 await clearSession(from);
+                // #5 FIX: Update local session + flag to prevent finally block from overwriting
+                session.mode = 'NORMAL';
+                session.checkoutState = undefined;
+                session.builderState = undefined;
+                session.isProcessing = false;
+                sessionCleared = true;
                 await sendWhatsApp(from, { text: "🚫 Checkout cancelado. ¿Qué se te antoja ahora?" });
                 return;
             }
 
             const { handleCheckoutFlow } = await import('./checkout.ts');
-            const response = await handleCheckoutFlow(from, aggregatedText, session);
+            const response = await handleCheckoutFlow(from, aggregatedText, session, sendButtonMessage, sendWhatsAppText);
 
             // Clear session if checkout completed or cancelled
             if (response.text.includes('ORDEN CONFIRMADA') || response.text.includes('cancelada')) {
                 await clearSession(from);
-                // FIX: Update LOCAL session to prevent finally block from overwriting DB with STALE session
+                // #2 FIX: Update LOCAL session + flag to prevent finally block from overwriting
                 session.mode = 'NORMAL';
                 session.checkoutState = undefined;
                 session.builderState = undefined;
+                session.isProcessing = false;
+                sessionCleared = true;
             } else {
                 await updateSession(from, session);
             }
 
             await sendWhatsApp(from, response);
+            // Save conversation history for checkout
+            if (!sessionCleared) {
+                if (!session.conversationHistory) session.conversationHistory = [];
+                session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
+                if (response.text) session.conversationHistory.push({ role: 'bot', text: response.text, timestamp: now });
+                if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+            }
         }
 
         // B. GENERAL AI / KEYWORD LOGIC (Normal Mode)
@@ -799,14 +838,31 @@ export async function processMessage(from: string, text: string): Promise<void> 
             // --- IGNORE INTERNAL BUTTON IDS ---
             // If text starts with 'btn_', it's an unhandled button click from a flow we might not have caught.
             // Or it might be a race condition. AI shouldn't try to answer "btn_0".
-            if (text.startsWith('btn_')) {
-                console.log(`🤖 Ignoring internal button ID: ${text}`);
+            if (aggregatedText.startsWith('btn_')) {
+                console.log(`🤖 Ignoring internal button ID: ${aggregatedText}`);
+                // Release lock before exiting
+                session.isProcessing = false;
+                session.activeThreadId = undefined;
+                await updateSession(from, session);
                 return;
             }
 
             const prodService = await import('./productService.ts');
 
-            // --- CATEGORY SELECTION HANDLER (cat_ID) ---
+            // --- CATEGORY SELECTION HANDLER (cat_ID) + armar_poke ---
+            if (text === 'armar_poke') {
+                // Interceptar selección de "Armar un Poke" del menú genérico → redirigir a web
+                session.isProcessing = false;
+                session.activeThreadId = undefined;
+                await updateSession(from, session);
+                await sendWhatsApp(from, {
+                    text: "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nPara elegir cada ingrediente a tu gusto, entra aquí:\n\n👉 https://yokopoke.mx/#product-selector\n\n¡Es súper fácil y rápido! 🚀",
+                    useButtons: true,
+                    buttons: ['Ver Menú de la Casa']
+                });
+                return;
+            }
+
             if (text.startsWith('cat_')) {
                 console.log("📂 Category Selected:", text);
                 const catIdStr = text.replace('cat_', '');
@@ -850,6 +906,14 @@ export async function processMessage(from: string, text: string): Promise<void> 
                                 rows: rows
                             }]
                         });
+                        // Save conversation history
+                        if (!session.conversationHistory) session.conversationHistory = [];
+                        session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
+                        if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+                        // Release lock
+                        session.isProcessing = false;
+                        session.activeThreadId = undefined;
+                        await updateSession(from, session);
                         return;
                     } else {
                         console.log(`⚠️ ERROR: No products found for category ${catName} (ID: ${catId})`);
@@ -866,6 +930,10 @@ export async function processMessage(from: string, text: string): Promise<void> 
                         }
 
                         await sendWhatsApp(from, { text: `Lo siento, por ahora no hay productos en ${catName}.` });
+                        // Release lock
+                        session.isProcessing = false;
+                        session.activeThreadId = undefined;
+                        await updateSession(from, session);
                         return;
                     }
                 }
@@ -874,10 +942,41 @@ export async function processMessage(from: string, text: string): Promise<void> 
             const menuContext = await prodService.getMenuContext();
             const allProducts = await prodService.getAllProducts();
 
+            // 👤 LOAD CUSTOMER DNA (favorites + profile)
+            let customerProfile: { favorites?: string[], orderCount?: number } | undefined;
+            try {
+                const { getOrderHistory, getFavoriteItems } = await import('./orderHistoryService.ts');
+                const [favorites, history] = await Promise.all([
+                    getFavoriteItems(from),
+                    getOrderHistory(from, 1)
+                ]);
+                if (favorites.length > 0 || history.length > 0) {
+                    customerProfile = {
+                        favorites,
+                        orderCount: history.length
+                    };
+                    // Cache in session for checkout pre-fill
+                    if (!session.customerProfile) {
+                        session.customerProfile = {
+                            favorites,
+                            orderCount: history.length,
+                            name: history[0]?.customer_name,
+                            lastAddress: history[0]?.full_address,
+                            lastAddressRefs: history[0]?.address_references
+                        };
+                    }
+                }
+            } catch (e) {
+                console.error('Customer DNA load error:', e);
+            }
+
+            // 🧠 Prepare conversation history for Gemini
+            const chatHistory = (session.conversationHistory || []).map(m => ({ role: m.role, text: m.text }));
+
             // ANALYZE INTENT with CART Context
             let geminiResponse: any;
             try {
-                geminiResponse = await import('./gemini.ts').then(m => m.analyzeIntent(aggregatedText, [], session.cart || []));
+                geminiResponse = await import('./gemini.ts').then(m => m.analyzeIntent(aggregatedText, chatHistory.map(h => `${h.role}: ${h.text}`), session.cart || []));
             } catch (e) {
                 console.error("⚠️ AI Brain Freeze (Intent):", e);
                 geminiResponse = { intent: 'CHAT' }; // Fallback to safe chat/menu
@@ -927,6 +1026,14 @@ export async function processMessage(from: string, text: string): Promise<void> 
                                 rows: rows
                             }]
                         });
+                        // Save conversation history
+                        if (!session.conversationHistory) session.conversationHistory = [];
+                        session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
+                        if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+                        // Release lock
+                        session.isProcessing = false;
+                        session.activeThreadId = undefined;
+                        await updateSession(from, session);
                         return;
                     }
                 }
@@ -954,6 +1061,14 @@ export async function processMessage(from: string, text: string): Promise<void> 
                         rows: rows.slice(0, 10)
                     }]
                 });
+                // Save conversation history
+                if (!session.conversationHistory) session.conversationHistory = [];
+                session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
+                if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+                // Release lock
+                session.isProcessing = false;
+                session.activeThreadId = undefined;
+                await updateSession(from, session);
                 return; // STOP HERE.
             }
 
@@ -964,45 +1079,49 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 // --- CHECKOUT INIT ---
                 console.log("💳 Intent is CHECKOUT -> Starting Checkout Flow");
 
-                // Initialize Checkout from Cart if available
-                let initialTotal = 0;
-                let selections = {};
-                // If cart exists, maybe we can convert it to checkout state? 
-                // For now, keeping simple structure, but logically we should migrate cart -> checkout
-                if (session.cart) {
-                    initialTotal = session.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                // 🛡️ GUARD: Prevent checkout with empty cart
+                if (!session.cart || session.cart.length === 0) {
+                    await sendWhatsApp(from, {
+                        text: "🛒 Tu carrito está vacío. Agrega algo primero antes de finalizar. ¿Qué se te antoja?",
+                        useButtons: true,
+                        buttons: ['Ver Menú', 'Pokes de la Casa']
+                    });
+                    // Note: lock released in common cleanup below
+                } else {
+                    // Initialize Checkout from Cart
+                    const initialTotal = session.cart.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
+
+                    session.mode = 'CHECKOUT';
+                    session.checkoutState = {
+                        productSlug: 'custom-order',
+                        selections: {},
+                        totalPrice: initialTotal,
+                        checkoutStep: 'COLLECT_NAME',
+                    };
+                    await updateSession(from, session);
+
+                    const response = {
+                        text: `¡Excelente! El total es $${initialTotal}. Para tomar tu pedido, ¿a qué nombre lo registro? 📝`
+                    };
+                    await sendWhatsApp(from, response);
                 }
-
-                session.mode = 'CHECKOUT';
-                session.checkoutState = {
-                    productSlug: 'custom-order',
-                    selections: {},
-                    totalPrice: initialTotal,
-                    checkoutStep: 'COLLECT_NAME',
-                    // TODO: Move cart items to checkoutState.items (This requires schema update in session.ts checkoutState, currently simplified)
-                };
-                await updateSession(from, session);
-
-                const response = {
-                    text: `¡Excelente! El total es $${initialTotal}. Para tomar tu pedido, ¿a qué nombre lo registro? 📝`
-                };
-                await sendWhatsApp(from, response);
-                return;
+                // Note: lock released in the common cleanup below, don't return early
             } else if (geminiResponse.intent === 'START_BUILDER') {
-                // Direct Sale - Let Sales Response handle it but ensure it doesn't redirect
-                const salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts, session.cart || []));
-                const response = {
-                    text: salesRes.text,
-                    useButtons: salesRes.suggested_actions && salesRes.suggested_actions.length > 0,
-                    buttons: salesRes.suggested_actions?.slice(0, 2) // MAX 2 BUTTONS
-                };
-                if (salesRes.show_image_url) await sendWhatsAppImage(from, salesRes.show_image_url, "");
-                await sendWhatsApp(from, response);
+                // Builder desactivado en WhatsApp → CTA URL Button a la web con PHONE PARAM
+                await sendCtaUrlButton(
+                    from,
+                    "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nElige cada ingrediente a tu gusto y ve fotos de todo en nuestro *Constructor Interactivo*.",
+                    "Abrir Constructor 🚀",
+                    `https://yokopoke.mx/?phone=${from}&source=whatsapp#product-selector`
+                );
             } else {
                 // GENERAL CHAT / SALES
                 let salesRes;
                 try {
-                    salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(aggregatedText, menuContext, allProducts, session.cart || []));
+                    salesRes = await import('./gemini.ts').then(m => m.generateSalesResponse(
+                        aggregatedText, menuContext, allProducts, session.cart || [],
+                        chatHistory, customerProfile
+                    ));
                 } catch (e) {
                     console.error("⚠️ AI Brain Freeze (Sales):", e);
                     // FALLBACK RESPONSE (Emergency Generator)
@@ -1014,38 +1133,45 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 }
 
                 // --- HANDLE SERVER ACTIONS (ADD TO CART) with REALITY CHECK ---
-                // --- HANDLE SERVER ACTIONS (ADD TO CART) with REALITY CHECK ---
                 if (salesRes.server_action && salesRes.server_action.type === 'ADD_TO_CART') {
-                    console.log("🛒 Executing ADD_TO_CART:", salesRes.server_action.product);
+                    const products = salesRes.server_action.products ||
+                        ((salesRes.server_action as any).product ? [(salesRes.server_action as any).product] : []);
 
-                    const requestedId = salesRes.server_action.product.id;
-                    const requestedName = salesRes.server_action.product.name;
+                    console.log(`🛒 Executing ADD_TO_CART for ${products.length} product(s)`);
+                    if (!session.cart) session.cart = [];
 
-                    // REALITY CHECK: Does this product actually exist?
-                    // Use loose equality for ID to handle string/number mismatch
-                    let realProduct = allProducts.find(p => String(p.id) === String(requestedId) || p.slug === requestedId);
+                    for (const requested of products) {
+                        const requestedId = requested.id;
+                        const requestedName = requested.name;
 
-                    // If not found by ID/Slug, fuzzy search by Name
-                    if (!realProduct && requestedName) {
-                        realProduct = allProducts.find(p => p.name.toLowerCase().includes(requestedName.toLowerCase()));
+                        // REALITY CHECK: Does this product actually exist?
+                        let realProduct = allProducts.find(p => String(p.id) === String(requestedId) || p.slug === requestedId);
+
+                        // If not found by ID/Slug, fuzzy search by Name
+                        if (!realProduct && requestedName) {
+                            realProduct = allProducts.find(p => p.name.toLowerCase().includes(requestedName.toLowerCase()));
+                        }
+
+                        if (realProduct) {
+                            session.cart.push({
+                                id: String(realProduct.id || realProduct.slug),
+                                name: realProduct.name,
+                                price: realProduct.base_price,
+                                quantity: requested.quantity || 1
+                            });
+                            console.log(`✅ Validated & Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
+                        } else {
+                            console.warn(`🛑 BLOCKED Hallucinated Product: ${requestedName} (ID: ${requestedId})`);
+                        }
                     }
-
-                    if (realProduct) {
-                        if (!session.cart) session.cart = [];
-
-                        session.cart.push({
-                            id: String(realProduct.id || realProduct.slug), // Ensure String
-                            name: realProduct.name,
-                            price: realProduct.base_price, // Ensure correct price from DB
-                            quantity: salesRes.server_action.product.quantity || 1
-                        });
-                        // Save immediately
-                        await updateSession(from, session);
-                        console.log(`✅ Validated & Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
-                    } else {
-                        console.warn(`🛑 BLOCKED Hallucinated Product: ${requestedName} (ID: ${requestedId})`);
-                        // Optionally inform user or just let the chat continue.
+                    // Build mini cart summary and append to AI response
+                    if (session.cart.length > 0) {
+                        const cartLines = session.cart.map(i => `• ${i.quantity}x ${i.name} — $${i.price * i.quantity}`).join('\n');
+                        const cartTotal = session.cart.reduce((s, i) => s + (i.price * i.quantity), 0);
+                        salesRes.text += `\n\n🛒 *Tu carrito:*\n${cartLines}\n💰 *Subtotal: $${cartTotal}*`;
                     }
+                    // Save immediately
+                    await updateSession(from, session);
                 }
 
                 // --- NEW: LIST MESSAGE SUPPORT ---
@@ -1097,6 +1223,13 @@ export async function processMessage(from: string, text: string): Promise<void> 
             }
         }
 
+        // 🧠 Save conversation to memory (after all responses sent)
+        if (!session.conversationHistory) session.conversationHistory = [];
+        session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
+        // Keep only last 5 exchanges (10 messages)
+        if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+        session.lastInteraction = now;
+
         // RELEASE LOCK
         session.isProcessing = false;
         session.activeThreadId = undefined;
@@ -1106,9 +1239,8 @@ export async function processMessage(from: string, text: string): Promise<void> 
         console.error("🔥 FATAL BOT ERROR:", error);
         await sendWhatsApp(from, { text: "😰 Ups, tuve un pequeño mareo. ¿Me lo repites por favor?" });
     } finally {
-        // RELEASE LOCK ALWAYS
-        // adaptable for early returns
-        if (session.isProcessing) {
+        // RELEASE LOCK ALWAYS — but NOT if session was already cleared
+        if (session.isProcessing && !sessionCleared) {
             session.isProcessing = false;
             session.activeThreadId = undefined;
             await updateSession(from, session);
@@ -1126,15 +1258,17 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
     if (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke'))) {
         console.log("🌊 Triggering Web Redirect for Armar Poke");
 
-        return {
-            text: "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nPara elegir cada ingrediente a tu gusto y verlo en tiempo real, entra a nuestro *Constructor Interactivo* aquí:\n\n👉 https://yokopoke.mx/#product-selector\n\n¡Es súper fácil y rápido! 🚀",
-            useButtons: true,
-            buttons: ['Ver Menú de la Casa']
-        };
+        await sendCtaUrlButton(
+            from,
+            "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nElige cada ingrediente a tu gusto y arma tu combinación perfecta en nuestro *Constructor Interactivo*.",
+            "Abrir Constructor 🚀",
+            `https://yokopoke.mx/?phone=${from}&source=whatsapp#product-selector`
+        );
+        return { text: "" }; // Handled via CTA
     }
 
-    // 0. If in Builder Mode (and NOT resetting), DISABLE other Fast Pass triggers
-    if (session && session.mode === 'BUILDER') return null;
+    // 0. If in Builder Mode OR Checkout (and NOT resetting), DISABLE other Fast Pass triggers
+    if (session && (session.mode === 'BUILDER' || session.mode === 'CHECKOUT')) return null;
 
     // 1. Generic Poke Triggers (Menu Choice)
     // Supports: "armar clásico", "armar poke", "quiero armar un poke"
@@ -1156,52 +1290,8 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
         };
     }
 
-    // 2. Handle Choice: "Armar Clásico" -> Flow
-    if (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke'))) {
-
-        // Try Flow first if configured
-        const flowId = "1380671310524592"; // Hardcoded ID from user
-        if (flowId) {
-            const success = await sendFlowMessage(from, flowId, "SIZE_SELECTION", "Armar Poke");
-            if (success) return null;
-        }
-
-        // Fallback to List Message logic
-        const success = await sendListMessage(from, {
-            header: "🥗 Arma tu Poke Perfecto",
-            body: "Elige el tamaño de tu Poke Clásico:",
-            footer: "Yoko Poke",
-            buttonText: "Ver tamaños",
-            sections: [{
-                title: "Tamaños disponibles",
-                rows: [
-                    {
-                        id: "poke-mediano",
-                        title: "Poke Mediano 🥗",
-                        description: "$120 - 1 proteína"
-                    },
-                    {
-                        id: "poke-grande",
-                        title: "Poke Grande 🍱",
-                        description: "$140 - 1 proteína"
-                    }
-                ]
-            }]
-        });
-
-        // If List Message failed, fallback to buttons
-        if (!success) {
-            return {
-                text: "¡Va! ¿De qué tamaño lo quieres? 🥣",
-                useButtons: true,
-                buttons: ['Poke Mediano', 'Poke Grande']
-            };
-        }
-
-        return { text: "" }; // HANDLED: Stop further processing
-    }
-
-    // ... (rest of function)
+    // 2. (REMOVED — duplicate of Priority 1 handler above, l.1232)
+    // "armar clásico" is already caught by the first check and redirects to web.
 
     // 3. Handle Choice: "Pokes de la Casa" -> List Bowls
     if (lowerText.includes('pokes de la casa') || lowerText.includes('de la casa') || lowerText.includes('pokes_casa')) {
@@ -1228,7 +1318,7 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
                 }]
             });
 
-            if (success) return null;
+            if (success) return { text: "" }; // HANDLED: Stop further processing
 
             // Fallback
             const list = products.slice(0, 5).map(p => `🍲 ${p.name} - $${p.base_price}`).join('\n');
@@ -1242,25 +1332,35 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
 
     // 4. Direct Size (Text OR List ID)
     if (['poke mediano', 'poke grande', 'poke-mediano', 'poke-grande'].includes(lowerText)) {
-        // REDIRECT TO WEB
-        return {
-            text: "🥗 *¡Excelente elección!* ✨\n\nPara personalizar tu Poke justo como te gusta, entra a nuestro *Constructor Interactivo* aquí:\n\n👉 https://yokopoke.mx/#product-selector\n\n¡Ahí puedes elegir cada ingrediente! 🚀",
-            useButtons: true,
-            buttons: ['Ver Menú de la Casa']
-        };
+        // REDIRECT TO WEB via CTA URL Button
+        await sendCtaUrlButton(
+            from,
+            "🥗 *¡Excelente elección!* ✨\n\nPersonaliza tu Poke justo como te gusta en nuestro *Constructor Interactivo*. ¡Elige cada ingrediente!",
+            "Personalizar mi Poke 🚀",
+            `https://yokopoke.mx/?phone=${from}&source=whatsapp#product-selector`
+        );
+        return { text: "" }; // Handled via CTA
     }
 
     // 5. Greetings + Colloquial
-    const colloquial = ['bro', 'hermano', 'papi', 'bb', 'nn', 'buenas', 'que tal', 'qué tal', 'onda', 'pedir', 'ordenar', 'menu', 'menú'];
-    if (
+    // BUT ONLY if the message is PURELY a greeting — if it also contains order intent, let Gemini handle it
+    const colloquial = ['bro', 'hermano', 'papi', 'bb', 'nn', 'buenas', 'que tal', 'qué tal', 'onda', 'menu', 'menú'];
+    const isGreeting = (
         INTENTS.greeting.some(k => text.includes(k)) ||
         colloquial.some(k => text.includes(k)) ||
         text.includes('hola')
-    ) {
+    );
+
+    // Order intent signals — if ANY of these are present, the user wants something specific
+    const orderSignals = ['quiero', 'dame', 'pido', 'agrega', 'agregar', 'ponme', 'manda', 'tráeme', 'traeme', 'gyoza', 'poke', 'burger', 'coca', 'agua', 'postre', 'bebida', 'spicy', 'entrada', 'calpico', 'limonada'];
+    const hasOrderIntent = orderSignals.some(k => lowerText.includes(k));
+
+    if (isGreeting && !hasOrderIntent) {
         const response = await handleBasicIntent({ from, text, timestamp: 0 });
         if (response) return response;
         return null;
     }
+    // If isGreeting AND hasOrderIntent → fall through to AI (Gemini handles greeting + order together)
 
     // 6. Burgers - Convert to List Message
     if (text.includes('burger') || text.includes('hamburguesa') || text.includes('burgers')) {
@@ -1286,7 +1386,7 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
                 }]
             });
 
-            if (success) return null;
+            if (success) return { text: "" }; // HANDLED: Stop further processing
 
             // Fallback
             const list = products.slice(0, 3).map(p => `🍔 ${p.name} - $${p.base_price}`).join('\n');
@@ -1298,114 +1398,153 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
         }
     }
 
+    // 6.5 Farewell / Thanks (natural closure)
+    const farewells = ['adiós', 'adios', 'bye', 'chao', 'nos vemos', 'hasta luego'];
+    const thanks = ['gracias', 'grax', 'thx', 'thanks'];
+    const isFarewell = farewells.some(f => lowerText.includes(f));
+    const isThanks = thanks.some(t => lowerText.includes(t));
+    // Only match if it's NOT also an order ("gracias, y dame unas gyozas" → let Gemini handle it)
+    const orderSignalsForFarewell = ['quiero', 'dame', 'agrega', 'ponme', 'pido', 'manda', 'poke', 'menú', 'menu'];
+    const hasOrderSignal = orderSignalsForFarewell.some(s => lowerText.includes(s));
+    if ((isFarewell || isThanks) && !hasOrderSignal) {
+        const msg = isFarewell
+            ? "¡Gracias por elegir Yoko Poke! 🥢✨ ¡Te esperamos pronto! 🐼"
+            : "¡Con gusto! 😊 Si necesitas algo más, aquí estoy. 🐼✨";
+        return {
+            text: msg,
+            useButtons: true,
+            buttons: ['Ver Menú']
+        };
+    }
+
+    // 7. 🔄 SMART RE-ORDER ("Lo de siempre")
+    const reorderTriggers = ['lo de siempre', 'lo mismo', 'repetir', 'mismo pedido', 'otra vez', 'lo de ayer', 'lo que siempre pido', 'mi pedido'];
+    if (reorderTriggers.some(t => lowerText.includes(t))) {
+        try {
+            const { getOrderHistory } = await import('./orderHistoryService.ts');
+            const history = await getOrderHistory(from, 1);
+
+            if (history.length === 0) {
+                return {
+                    text: "🤔 Aún no tengo pedidos guardados tuyos.\n\n¡Pero hagamos el primero! ¿Qué se te antoja hoy? 🥢",
+                    useButtons: true,
+                    buttons: ['Ver Menú']
+                };
+            }
+
+            const lastOrder = history[0];
+            const items = lastOrder.items || [];
+
+            if (items.length === 0) {
+                return {
+                    text: "🤔 Encontré tu historial pero sin detalles del pedido. ¿Qué te preparo hoy?",
+                    useButtons: true,
+                    buttons: ['Ver Menú']
+                };
+            }
+
+            // Build cart from history
+            const cartItems = items.map((item: any) => ({
+                id: item.id || item.name,
+                name: item.name,
+                price: item.price || 0,
+                quantity: item.quantity || 1
+            }));
+
+            const total = cartItems.reduce((sum: number, i: any) => sum + (i.price * i.quantity), 0);
+
+            // Load cart into session
+            session.cart = cartItems;
+            session.lastInteraction = Date.now();
+            await updateSession(from, session);
+
+            // Build summary
+            const itemList = cartItems.map((i: any) => `• ${i.quantity}x ${i.name} ($${i.price})`).join('\n');
+
+            return {
+                text: `🔄 *¡Lo de siempre!* 🎉\n\nTengo tu último pedido:\n\n${itemList}\n\n💰 *Total: $${total}*\n\n¿Lo confirmo igual o quieres cambiar algo?`,
+                useButtons: true,
+                buttons: ['Finalizar pedido', 'Ver Menú']
+            };
+        } catch (e) {
+            console.error("Re-order error:", e);
+            return {
+                text: "😅 Tuve un problema buscando tu historial. ¿Me dices qué quieres pedir?",
+                useButtons: true,
+                buttons: ['Ver Menú']
+            };
+        }
+    }
+
     return null;
 }
 
-// --- FLOW HELPER ---
-async function sendFlowMessage(to: string, flowId: string, screen: string, cta: string) {
+// --- FLOW HELPER (DISABLED — cuenta no verificada, WhatsApp Flows no disponible) ---
+// async function sendFlowMessage(to, flowId, screen, cta) { ... }
+
+
+// --- DISABLED: startBuilder (Builder is web-only, this code is dead) ---
+// If someone calls this accidentally, it would set session.mode='BUILDER' which is a broken state.
+// async function startBuilder(from: string, slug: string) { ... }
+// See handleInstantKeywords for the web redirect that replaces this.
+
+export async function sendWhatsApp(to: string, response: BotResponse) {
+    // Support list messages natively
+    if (response.useList && response.listData) {
+        const success = await sendListMessage(to, response.listData);
+        if (success) return;
+        // Fallback to text if list fails
+    }
+    if (response.useButtons && response.buttons && response.buttons.length > 0) {
+        await sendWhatsAppButtons(to, response.text, response.buttons);
+    } else {
+        await sendWhatsAppText(to, response.text);
+    }
+}
+
+// --- CTA URL BUTTON (Professional link button, no cuenta verificada needed) ---
+async function sendCtaUrlButton(to: string, bodyText: string, displayText: string, url: string) {
     const payload = {
         messaging_product: "whatsapp",
         to,
         type: "interactive",
         interactive: {
-            type: "flow",
-            header: { type: "text", text: "🥗 Arma tu Poke" },
-            body: { text: "¡Crea tu combinación perfecta en segundos!" },
-            footer: { text: "Yoko Poke" },
+            type: "cta_url",
+            body: { text: bodyText },
             action: {
-                name: "flow",
+                name: "cta_url",
                 parameters: {
-                    mode: "draft", // Change to "published" in production
-                    flow_message_version: "3",
-                    flow_token: "unused",
-                    flow_id: flowId,
-                    flow_cta: cta,
-                    flow_action: "navigate",
-                    flow_action_payload: {
-                        screen: screen
-                    }
+                    display_text: displayText,
+                    url: url
                 }
             }
         }
     };
 
-    const res = await fetch(`https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    });
+    try {
+        const res = await fetchWithRetry(
+            `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            }
+        );
 
-    if (!res.ok) {
-        console.error("Error sending flow:", await res.text());
-        return false;
-    }
-    return true;
-}
-
-
-// --- HELPER WRAPPERS ---
-
-async function startBuilder(from: string, slug: string) {
-    console.log(`🏗 Starting builder for ${slug}`);
-
-    const product = await getProductWithSteps(slug);
-    if (!product) {
-        await sendWhatsAppText(from, "Error: Producto no encontrado. :(");
-        return;
-    }
-
-    const newSession: SessionData = {
-        mode: 'BUILDER',
-        lastInteraction: Date.now(),
-        builderState: {
-            productSlug: slug,
-            stepIndex: 0,
-            selections: {},
-            totalPrice: 0
-        },
-        pendingMessages: [],
-        bufferUntil: 0
-    };
-    await updateSession(from, newSession);
-
-    const firstStep = product.steps[0];
-
-    // Try sending as List Message
-    const success = await sendListMessage(from, {
-        header: `Tu ${product.name} 🥗`,
-        body: `Primero, elige la ${firstStep.label}:`,
-        footer: "Yoko Poke",
-        buttonText: `Ver ${firstStep.label}`,
-        sections: [{
-            title: firstStep.label || 'Opciones',
-            rows: firstStep.options.slice(0, 10).map(o => ({ // Max 10 rows
-                id: o.id.toString(),
-                title: o.name.substring(0, 24),
-                description: (o.price_extra && o.price_extra > 0) ? `+$${o.price_extra}` : undefined
-            }))
-        }]
-    });
-
-    // Fallback to text if List failed
-    if (!success) {
-        const optionsList = firstStep.options.map(o => `• ${o.name}`).join('\n');
-        const response = {
-            text: `¡Excelente! Vamos a armar tu *${product.name}*.\n\nPrimero: *${firstStep.label}*\n\n${optionsList}`,
-            useButtons: firstStep.max_selections !== 1,
-            buttons: firstStep.max_selections !== 1 ? ['✅ Listo'] : undefined
-        };
-        await sendWhatsApp(from, response);
-    }
-}
-
-export async function sendWhatsApp(to: string, response: BotResponse) {
-    if (response.useButtons && response.buttons && response.buttons.length > 0) {
-        await sendWhatsAppButtons(to, response.text, response.buttons);
-    } else {
-        await sendWhatsAppText(to, response.text);
+        if (!res.ok) {
+            const errText = await res.text();
+            console.error("CTA URL Button Error:", errText);
+            // Fallback to plain text with link
+            await sendWhatsAppText(to, `${bodyText}\n\n👉 ${url}`);
+        } else {
+            console.log(`✅ CTA URL Button sent to ${to}`);
+        }
+    } catch (e) {
+        console.error("CTA URL Button Error:", e);
+        await sendWhatsAppText(to, `${bodyText}\n\n👉 ${url}`);
     }
 }
 
@@ -1691,10 +1830,78 @@ async function notifyPreOrders(supabase: any) {
 // unless it's a verification request.
 
 Deno.serve(async (req: Request) => {
+    // --- WEB ORDER BRIDGE: RECEIVE ORDER FROM WEBSITE ---
+    {
+        const url = new URL(req.url);
+        const adminSecret = Deno.env.get('ADMIN_SECRET') || 'yoko_master_key';
+
+        if (url.searchParams.get('action') === 'web_order' && url.searchParams.get('secret') === adminSecret) {
+            try {
+                const { phone, items, total, name } = await req.json();
+
+                if (!phone || !items) {
+                    return new Response("Missing phone or items", { status: 400 });
+                }
+
+                console.log(`🌐 Web Order received for ${phone}: $${total}`);
+
+                // 1. Update Session Cart
+                const session = await getSession(phone);
+
+                // Map web items to session cart format
+                session.cart = items.map((i: any) => ({
+                    id: i.id || i.name.toLowerCase().replace(/ /g, '-'),
+                    name: i.name,
+                    price: i.price,
+                    quantity: i.quantity,
+                    // If it's a bowl/burger, it might be the only thing they want to check out now
+                    customization: i.details ? i.details.map((d: any) => `${d.label}: ${d.value}`).join(', ') : ''
+                }));
+
+                session.mode = 'CHECKOUT';
+                session.checkoutState = {
+                    productSlug: 'web-order',
+                    selections: {},
+                    totalPrice: total,
+                    checkoutStep: 'COLLECT_NAME',
+                    customerName: name
+                };
+
+                let nextMessage = "";
+                if (name) {
+                    session.checkoutState.checkoutStep = 'COLLECT_DELIVERY'; // Skip name
+                    nextMessage = `✅ *¡Pedido Recibido de la Web!* 🌐\n\nHola *${name}*, ya tengo tu carrito listo del sitio web.\n\n🛒 *Total: $${total}*\n\n¿Cómo quieres recibirlo?`;
+                } else {
+                    nextMessage = `✅ *¡Pedido Recibido de la Web!* 🌐\n\nYa tengo tu carrito listo.\n\n🛒 *Total: $${total}*\n\nPara confirmar, ¿a qué nombre registro el pedido? 📝`;
+                }
+
+                await updateSession(phone, session);
+
+                // 2. Notify User via WhatsApp
+                const cartSummary = items.map((i: any) => `• ${i.quantity}x ${i.name}`).join('\n');
+                const fullMsg = nextMessage.replace("carrito listo", `carrito listo:\n${cartSummary}`);
+
+                // Send buttons for delivery if skipping name
+                if (session.checkoutState.checkoutStep === 'COLLECT_DELIVERY') {
+                    await sendWhatsAppButtons(phone, fullMsg, ['🛵 A Domicilio', '🏪 Recoger en Tienda']);
+                } else {
+                    await sendWhatsAppText(phone, fullMsg);
+                }
+
+                return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
+
+            } catch (e) {
+                console.error("Web Order Bridge Error:", e);
+                return new Response(JSON.stringify({ error: String(e) }), { status: 500 });
+            }
+        }
+    }
+
     // --- ADMIN ACTION: NOTIFY PRE-ORDERS ---
     {
         const url = new URL(req.url);
-        if (url.searchParams.get('action') === 'notify_preorders' && url.searchParams.get('secret') === 'yoko_master_key') {
+        const adminSecret = Deno.env.get('ADMIN_SECRET') || 'yoko_master_key';
+        if (url.searchParams.get('action') === 'notify_preorders' && url.searchParams.get('secret') === adminSecret) {
             const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
             // Reuse logic
             const result = await notifyPreOrders(supabase);
@@ -1789,18 +1996,26 @@ Deno.serve(async (req: Request) => {
                             text = await transcribeAudio(media);
                             console.log(`📝 Transcription: "${text}"`);
                             if (!text) {
-                                await sendWhatsApp(from, { text: "🙉 Escuché ruido pero no entendí. ¿Podrías escribirlo?" });
+                                await sendWhatsApp(from, {
+                                    text: "🙉 Escuché ruido pero no entendí. ¿Podrías escribirlo? 📝",
+                                    useButtons: true,
+                                    buttons: ['Ver Menú', 'Ayuda']
+                                });
                             }
                         } else {
                             console.error("Audio download failed");
-                            await sendWhatsApp(from, { text: "⚠️ No pude descargar tu audio. ¿Me lo escribes?" });
+                            await sendWhatsApp(from, {
+                                text: "⚠️ No pude descargar tu audio. ¿Me lo escribes? 📝",
+                                useButtons: true,
+                                buttons: ['Ver Menú', 'Ayuda']
+                            });
                         }
                     } catch (e) {
                         console.error("Audio processing error:", e);
                     }
                 }
                 else if (message.type === 'location') {
-                    // 📍 LOCATION MESSAGE (Premium UX)
+                    // 📍 LOCATION MESSAGE (Premium UX + Reverse Geocoding)
                     console.log(`📍 Receiving Location from ${from}`);
                     try {
                         const location = message.location;
@@ -1808,18 +2023,57 @@ Deno.serve(async (req: Request) => {
 
                         // Check if we're in checkout waiting for location
                         if (session.mode === 'CHECKOUT' && session.checkoutState?.checkoutStep === 'COLLECT_LOCATION') {
+                            // 🌍 REVERSE GEOCODE: Convert GPS → Street Address
+                            let resolvedAddress = location.address || location.name || '';
+                            try {
+                                const geoUrl = `https://nominatim.openstreetmap.org/reverse?lat=${location.latitude}&lon=${location.longitude}&format=json&addressdetails=1&accept-language=es`;
+                                const geoRes = await fetch(geoUrl, {
+                                    headers: { 'User-Agent': 'YokoPoke-Bot/1.0' }
+                                });
+
+                                if (geoRes.ok) {
+                                    const geoData = await geoRes.json();
+                                    const addr = geoData.address || {};
+
+                                    // Build human-readable address from components
+                                    const parts: string[] = [];
+                                    if (addr.road) parts.push(addr.road);
+                                    if (addr.house_number) parts.push(`#${addr.house_number}`);
+                                    if (addr.neighbourhood || addr.suburb) parts.push(addr.neighbourhood || addr.suburb);
+                                    if (addr.city || addr.town || addr.village) parts.push(addr.city || addr.town || addr.village);
+
+                                    if (parts.length > 0) {
+                                        resolvedAddress = parts.join(', ');
+                                    } else if (geoData.display_name) {
+                                        // Fallback to full display name, truncated
+                                        resolvedAddress = geoData.display_name.split(',').slice(0, 4).join(',').trim();
+                                    }
+
+                                    console.log(`📍 Geocoded: ${resolvedAddress}`);
+                                }
+                            } catch (geoError) {
+                                console.error("Geocoding error (non-fatal):", geoError);
+                                // Continue with WhatsApp-provided address or empty
+                            }
+
+                            // Save location data
                             session.checkoutState.location = {
                                 latitude: location.latitude,
                                 longitude: location.longitude,
-                                address: location.address || location.name
+                                address: resolvedAddress
                             };
+                            session.checkoutState.fullAddress = resolvedAddress;
 
-                            // Advance to address collection
-                            session.checkoutState.checkoutStep = 'COLLECT_ADDRESS';
+                            // Skip COLLECT_ADDRESS → go straight to COLLECT_REFERENCES
+                            session.checkoutState.checkoutStep = 'COLLECT_REFERENCES';
                             await updateSession(from, session);
 
+                            const addrPreview = resolvedAddress
+                                ? `\n\n📍 *Dirección detectada:*\n${resolvedAddress}`
+                                : '';
+
                             await sendWhatsApp(from, {
-                                text: "📍 ¡Ubicación recibida!\n\nAhora, por favor escribe tu dirección completa:\n(Calle, Número, Colonia)"
+                                text: `✅ ¡Ubicación recibida!${addrPreview}\n\n📝 ¿Alguna referencia para el repartidor?\n(Ej: "Portón blanco", "Junto al Oxxo", "Casa azul")`
                             });
                             return; // Don't process as text
                         } else {
@@ -1841,15 +2095,14 @@ Deno.serve(async (req: Request) => {
                     } else if (interactive.type === 'list_reply') {
                         text = interactive.list_reply.id;
                     } else if (interactive.type === 'nfm_reply') {
-                        // Handle Flow Response specially
-                        try {
-                            const responseJson = JSON.parse(interactive.nfm_reply.response_json);
-                            console.log("🌸 FLOW RESPONSE:", responseJson);
-                            await handleFlowResponse(from, responseJson);
-                            return; // Flow handled separately
-                        } catch (e) {
-                            console.error("Flow Parse Error:", e);
-                        }
+                        // DISABLED: WhatsApp Flows not available (account not verified)
+                        console.log("🌸 FLOW RESPONSE received but Flows disabled:", interactive.nfm_reply);
+                        await sendWhatsApp(from, {
+                            text: "⚠️ Esta función no está disponible por el momento. ¿Qué te gustaría pedir?",
+                            useButtons: true,
+                            buttons: ['Ver Menú', 'Pokes de la Casa']
+                        });
+                        return;
                     }
                 }
 
@@ -1909,48 +2162,5 @@ Deno.serve(async (req: Request) => {
     }
 });
 
-// --- FLOW RESPONSE HANDLER ---
-async function handleFlowResponse(from: string, flowData: any) {
-    if (!flowData) return;
-
-    // 1. Create Session in Checkout Mode
-    const session = await getSession(from);
-
-    // Parse Payload
-    const total = parseFloat(flowData.total || "0");
-    const summary = flowData.summary || "Orden de Flow";
-    const customerName = flowData.customer_name || "Cliente";
-    const deliveryMethod = flowData.delivery_method || "pickup";
-
-    // Update Session
-    session.mode = 'CHECKOUT';
-    session.checkoutState = {
-        productSlug: 'flow-custom-order', // Generic slug
-        selections: {}, // Flow handled the selections
-        totalPrice: total,
-        checkoutStep: 'CONFIRMATION', // Skip name collection as Flow did it
-        flowData: flowData // Store raw data for reference
-    };
-
-    // We already have the Name and Delivery Method from the Flow! 
-    // So we can jump straight to Confirmation or even Place Order if payment isn't required yet.
-    // Let's go to confirmation.
-
-    session.checkoutState.customerName = customerName;
-    session.checkoutState.deliveryMethod = deliveryMethod;
-
-    await updateSession(from, session);
-
-    // 2. Send Confirmation Message
-    const methodText = deliveryMethod === 'delivery' ? '🚗 Envío a domicilio' : '🏪 Recoger en tienda';
-
-    const confirmText = `✅ *¡Orden Recibida desde Flow!* 🌸\n\n` +
-        `👤 *Cliente:* ${customerName}\n` +
-        `📝 *Pedido:* ${summary}\n` +
-        `💰 *Total:* $${total}\n` +
-        `🚚 *Método:* ${methodText}\n\n` +
-        `¿Todo es correcto?`;
-
-    await sendWhatsAppButtons(from, confirmText, ['✅ Confirmar', '❌ Cancelar']);
-}
-
+// --- FLOW RESPONSE HANDLER (DISABLED — cuenta no verificada, WhatsApp Flows no disponible) ---
+// async function handleFlowResponse(from: string, flowData: any) { ... }

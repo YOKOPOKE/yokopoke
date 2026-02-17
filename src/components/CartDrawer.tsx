@@ -99,6 +99,26 @@ export default function CartDrawer() {
 
             if (!result.success) throw new Error(result.error);
 
+
+            // 3. WHATSAPP BRIDGE: Notify Bot if source is WhatsApp
+            const waSource = sessionStorage.getItem('yoko_wa_source');
+            const waPhone = sessionStorage.getItem('yoko_wa_phone');
+
+            if (waSource === 'whatsapp' && waPhone) {
+                // Fire and forget (don't block UI)
+                const WEBHOOK_URL = 'https://xsolxbroqqjkoseksmny.supabase.co/functions/v1/whatsapp-webhook';
+                fetch(`${WEBHOOK_URL}?action=web_order&secret=yoko_master_key`, { // Ideally use env var or proxy, but client side acceptable for non-critical data
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone: waPhone,
+                        items: items,
+                        total: cartTotal,
+                        name: formData.name
+                    })
+                }).catch(e => console.error('WA Bridge Error:', e));
+            }
+
             if (paymentMethod === 'card') {
                 // Create Checkout Session
                 const response = await fetch('/api/checkout', {
@@ -141,6 +161,16 @@ export default function CartDrawer() {
             setIsSubmitting(false);
         }
     };
+
+    // Auto-fill phone from WA session
+    useEffect(() => {
+        if (isCartOpen) {
+            const waPhone = sessionStorage.getItem('yoko_wa_phone');
+            if (waPhone && !formData.phone) {
+                setFormData(prev => ({ ...prev, phone: waPhone }));
+            }
+        }
+    }, [isCartOpen]);
 
     // Apple-style spring transition
     const springTransition = {
