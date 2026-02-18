@@ -307,7 +307,9 @@ export async function handleCheckoutFlow(
         }
 
         return {
-            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto? Responde *Sí* para confirmar o *Cancelar* para reiniciar.`
+            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto?`,
+            useButtons: true,
+            buttons: ['✅ Sí, Confirmar', '❌ Cambiar algo']
         };
     }
 
@@ -377,7 +379,6 @@ export async function handleCheckoutFlow(
             customer_name: checkout.customerName,
             phone: from,
             total: checkout.totalPrice,
-            total_amount: checkout.totalPrice, // Fallback for schema
             status: isPreOrder ? 'pre_order' : 'pending', // <--- PRE-ORDER STATUS
             items: items,
             delivery_method: checkout.deliveryMethod || 'pickup',
