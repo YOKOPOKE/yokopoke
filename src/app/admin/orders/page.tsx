@@ -26,6 +26,16 @@ type Order = {
     address?: string;
     phone?: string;
     pickup_time?: string;
+    full_address?: string;
+    address_references?: string;
+    location?: {
+        latitude?: number;
+        longitude?: number;
+        address?: string;
+        name?: string;
+        lat?: number;
+        lng?: number;
+    };
 };
 
 // Hook for elapsed time

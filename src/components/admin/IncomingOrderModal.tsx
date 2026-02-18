@@ -77,22 +77,52 @@ export default function IncomingOrderModal() {
 
                     {/* Modal Content */}
                     <div className="p-8">
-                        <div className="flex items-center justify-between mb-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
+                        <div className="flex items-start justify-between mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
                             <div>
                                 <h3 className="text-xl font-bold text-slate-800">{incomingOrder.customer_name}</h3>
-                                <div className="flex items-center gap-2 mt-1">
+                                <p className="text-sm text-slate-500 font-mono mb-2">{incomingOrder.phone}</p>
+
+                                <div className="flex items-center gap-2">
                                     {incomingOrder.delivery_method === 'pickup' ? (
-                                        <span className="flex items-center gap-1 text-xs font-bold bg-orange-100/80 text-orange-700 px-2.5 py-1 rounded-full border border-orange-200/50">
-                                            <ShoppingBag size={12} /> Recoger {incomingOrder.pickup_time}
-                                        </span>
+                                        <div className="flex flex-col items-start gap-1">
+                                            <span className="flex items-center gap-1 text-xs font-bold bg-orange-100/80 text-orange-700 px-2.5 py-1 rounded-full border border-orange-200/50">
+                                                <ShoppingBag size={12} /> Recoger {incomingOrder.pickup_time}
+                                            </span>
+                                        </div>
                                     ) : (
-                                        <span className="flex items-center gap-1 text-xs font-bold bg-indigo-100/80 text-indigo-700 px-2.5 py-1 rounded-full border border-indigo-200/50">
-                                            <User size={12} /> Domicilio
-                                        </span>
+                                        <div className="flex flex-col items-start gap-2">
+                                            <span className="flex items-center gap-1 text-xs font-bold bg-indigo-100/80 text-indigo-700 px-2.5 py-1 rounded-full border border-indigo-200/50">
+                                                <User size={12} /> Domicilio
+                                            </span>
+                                        </div>
                                     )}
                                 </div>
+
+                                {/* Delivery Details Section */}
+                                {incomingOrder.delivery_method === 'delivery' && (
+                                    <div className="mt-3 p-3 bg-white rounded-lg border border-slate-200/60 max-w-[280px]">
+                                        <p className="text-slate-700 font-medium text-xs leading-relaxed">
+                                            {incomingOrder.address || incomingOrder.full_address || incomingOrder.location?.address || '📍 Ubicación compartida'}
+                                        </p>
+                                        {incomingOrder.address_references && (
+                                            <p className="text-slate-400 text-[10px] mt-1 italic">
+                                                "{incomingOrder.address_references}"
+                                            </p>
+                                        )}
+                                        {(incomingOrder.location?.latitude || incomingOrder.location?.lat) && (
+                                            <a
+                                                href={`https://www.google.com/maps/search/?api=1&query=${incomingOrder.location?.latitude || incomingOrder.location?.lat},${incomingOrder.location?.longitude || incomingOrder.location?.lng}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1.5 mt-2 text-[10px] font-bold text-sky-600 hover:text-sky-800 hover:underline bg-sky-50 px-2 py-1 rounded-md"
+                                            >
+                                                🗺️ Ver en Mapa
+                                            </a>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                            <div className="text-right">
+                            <div className="text-right shrink-0 ml-4">
                                 <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Total</span>
                                 <span className="font-mono text-3xl font-black text-rose-600 tracking-tight">${incomingOrder.total}</span>
                             </div>

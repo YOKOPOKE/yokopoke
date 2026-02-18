@@ -27,6 +27,12 @@ export interface BotResponse {
     buttons?: string[];
     useList?: boolean;
     listData?: ListMessage;
+    location?: {
+        lat: number;
+        lng: number;
+        name: string;
+        address: string;
+    };
 }
 
 
@@ -1621,10 +1627,41 @@ export async function sendWhatsApp(to: string, response: BotResponse) {
         if (success) return;
         // Fallback to text if list fails
     }
+    if (response.location) {
+        await sendWhatsAppLocation(to, response.location.lat, response.location.lng, response.location.name, response.location.address);
+    }
     if (response.useButtons && response.buttons && response.buttons.length > 0) {
         await sendWhatsAppButtons(to, response.text, response.buttons);
     } else {
         await sendWhatsAppText(to, response.text);
+    }
+}
+
+async function sendWhatsAppLocation(to: string, lat: number, lng: number, name: string, address: string) {
+    try {
+        await fetchWithRetry(
+            `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    to: to,
+                    type: "location",
+                    location: {
+                        latitude: lat,
+                        longitude: lng,
+                        name: name,
+                        address: address
+                    }
+                }),
+            }
+        );
+    } catch (e) {
+        console.error("Failed to send location message:", e);
     }
 }
 
@@ -2039,6 +2076,28 @@ Deno.serve(async (req: Request) => {
             return new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } });
         }
     }
+
+    // --- MARK AS READ HELPER ---
+    async function markMessageAsRead(messageId: string) {
+        try {
+            // FIRE AND FORGET
+            fetch(`https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    status: 'read',
+                    message_id: messageId
+                })
+            }).catch(e => console.error("Error marking read:", e));
+        } catch (e) {
+            console.error("Error in markMessageAsRead wrapper:", e);
+        }
+    }
+
     // 1. HEALTH CHECK / VERIFICATION
     if (req.method === "GET") {
         const url = new URL(req.url);
@@ -2067,6 +2126,15 @@ Deno.serve(async (req: Request) => {
 
         const message = body.entry[0].changes[0].value.messages[0];
         const from = message.from; // Phone number
+
+        // --- MARK AS READ (Blue Ticks) ---
+        if (message.id) {
+            markMessageAsRead(message.id);
+        }
+
+
+
+
 
         // --- 0. IDEMPOTENCY CHECK (God Level) ---
         // Prevent double-processing if Meta retries the webhook

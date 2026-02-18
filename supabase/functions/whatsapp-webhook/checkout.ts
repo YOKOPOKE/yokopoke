@@ -117,24 +117,20 @@ export async function handleCheckoutFlow(
         checkout.deliveryMethod = deliveryMethod;
 
         if (deliveryMethod === 'pickup') {
-            checkout.checkoutStep = 'COLLECT_PICKUP_TIME';
+            checkout.checkoutStep = 'SHOW_SUMMARY';
+            checkout.pickupTime = 'Lo antes posible'; // Default generic time
 
-            const slots = await generateTimeSlots();
-            if (slots.length === 0) {
-                return {
-                    text: "🌙 *¡Ya cerramos por hoy!* 🌙\n\nNuestras entregas son hasta las 10:00 PM.\nPor favor intenta de nuevo mañana. ☀️",
-                    useButtons: true,
-                    buttons: ['Ver Menú']
-                };
-            }
-
-            const buttons = slots.slice(0, 3).map(s => `🕒 ${s} `); // Max 3 buttons
-            const slotsText = slots.map(s => `• ${s} `).join('\n');
-
+            // Send Location Map via BotResponse
             return {
-                text: `📍 *Recoger en Tienda*\n\n¿A qué hora pasas por tu pedido? (Estimado)\n\n${slotsText}\n\nSelecciona una hora 👇`,
+                text: `📍 *Recoger en Tienda*\n\n¡Perfecto! Te esperamos en nuestra sucursal.\n\nConfirma tu pedido para empezar a prepararlo. 👇`,
                 useButtons: true,
-                buttons: slots.slice(0, 3)
+                buttons: ['Confirmar Pedido', 'Cancelar'],
+                location: {
+                    lat: 16.254645,
+                    lng: -92.135200,
+                    name: "Yoko Poke",
+                    address: "Calle Belisario Domínguez, Comitán"
+                }
             };
         } else {
             // Delivery - Request Location (Premium UX)
@@ -381,13 +377,14 @@ export async function handleCheckoutFlow(
             customer_name: checkout.customerName,
             phone: from,
             total: checkout.totalPrice,
+            total_amount: checkout.totalPrice, // Fallback for schema
             status: isPreOrder ? 'pre_order' : 'pending', // <--- PRE-ORDER STATUS
             items: items,
-            delivery_method: checkout.deliveryMethod,
-            pickup_time: checkout.pickupTime,
+            delivery_method: checkout.deliveryMethod || 'pickup',
+            pickup_time: checkout.pickupTime || '',
             address: checkout.address || checkout.fullAddress || '', // Fallback
             address_references: checkout.addressReferences || '',
-            location: checkout.location,
+            location: checkout.location || {},
             payment_status: 'pending',
             created_at: new Date().toISOString()
         };
