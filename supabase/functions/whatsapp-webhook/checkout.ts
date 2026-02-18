@@ -328,9 +328,9 @@ export async function handleCheckoutFlow(
             session.checkoutState = undefined;
 
             return {
-                text: "❌ Orden cancelada. ¿Quieres empezar de nuevo?",
+                text: "Entendido, no te preocupes. 👌\n\nHe cancelado la orden actual. Cuando quieras, aquí estaré listo para tomar tu pedido de nuevo. 🐼✨\n\n¿Te gustaría ver el menú?",
                 useButtons: true,
-                buttons: ['Armar un Poke', 'Ver Menú']
+                buttons: ['Ver Menú']
             };
         }
 
