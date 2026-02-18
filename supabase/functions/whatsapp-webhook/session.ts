@@ -35,10 +35,17 @@ export interface CheckoutState {
 }
 
 export interface SessionData {
-    mode: 'NORMAL' | 'BUILDER' | 'CHECKOUT' | 'PAUSED';
+    mode: 'NORMAL' | 'BUILDER' | 'CHECKOUT' | 'PAUSED' | 'UPSELL_DESSERT';
     builderState?: BuilderState;
     checkoutState?: CheckoutState;
     lastInteraction: number;
+
+    // NEW: Upsell Tracking
+    upsellProduct?: {
+        id: string; // Slug or ID
+        name: string;
+        price: number;
+    };
 
     // CONCURRENCY & ROBUSTNESS
     processingStart?: number; // Timestamp when lock was acquired

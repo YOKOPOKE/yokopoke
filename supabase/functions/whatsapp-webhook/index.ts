@@ -785,7 +785,69 @@ export async function processMessage(from: string, text: string): Promise<void> 
             return;
         }
 
-        // 2. CHECKOUT MODE
+        // 2. UPSELL MODE (Postres by Geranio)
+        else if (session.mode === 'UPSELL_DESSERT' && session.upsellProduct) {
+            const lower = aggregatedText.toLowerCase();
+            const positives = ['si', 'sí', 'claro', 'va', 'dale', 'agrega', 'agregar', 'ponlo', 'ok', 'bueno', session.upsellProduct.name.toLowerCase()];
+            const negatives = ['no', 'gracias', 'nel', 'finalizar', 'ya no', 'cerrar', 'listo', 'pagar', 'checkout', 'pago'];
+
+            if (positives.some(k => lower.includes(k))) {
+                // Add to cart
+                if (!session.cart) session.cart = [];
+                session.cart.push({
+                    id: session.upsellProduct.id,
+                    name: session.upsellProduct.name,
+                    price: session.upsellProduct.price,
+                    quantity: 1
+                });
+                // Feedback + Continue to Checkout
+                const subtotal = session.cart.reduce((s: number, i: any) => s + (i.price * (i.quantity || 1)), 0);
+                await sendWhatsApp(from, { text: `✅ ¡Agregado! 🍰\n\nTu total actual: $${subtotal}` });
+
+                // Initialize Checkout
+                session.mode = 'CHECKOUT';
+                session.checkoutState = {
+                    productSlug: 'custom-order',
+                    selections: {},
+                    totalPrice: subtotal,
+                    checkoutStep: 'COLLECT_NAME',
+                };
+                delete session.upsellProduct;
+                await updateSession(from, session);
+
+                await sendWhatsApp(from, { text: `Para finalizar, ¿a qué nombre registro tu pedido? 📝` });
+                return;
+            }
+
+            else if (negatives.some(k => lower.includes(k))) {
+                // Skip upsell
+                const subtotal = session.cart ? session.cart.reduce((s: number, i: any) => s + (i.price * (i.quantity || 1)), 0) : 0;
+                session.mode = 'CHECKOUT';
+                session.checkoutState = {
+                    productSlug: 'custom-order',
+                    selections: {},
+                    totalPrice: subtotal,
+                    checkoutStep: 'COLLECT_NAME',
+                };
+                delete session.upsellProduct;
+                await updateSession(from, session);
+
+                await sendWhatsApp(from, { text: `Entendido. Total: $${subtotal}. 📝 ¿A qué nombre registro tu pedido?` });
+                return;
+            }
+
+            else {
+                // Repeater
+                await sendWhatsApp(from, {
+                    text: "¿Te animas con el postre? 🍰\nResponde 'Sí' para agregarlo o 'No' para continuar.",
+                    useButtons: true,
+                    buttons: ['Sí, agregar', 'No, finalizar']
+                });
+                return;
+            }
+        }
+
+        // 3. CHECKOUT MODE
         else if (session.mode === 'CHECKOUT' && session.checkoutState) {
             console.log(`💳 Processing Checkout Flow for ${from}`);
 
@@ -848,6 +910,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
             }
 
             const prodService = await import('./productService.ts');
+            const categories = await prodService.getCategories();
 
             // --- CATEGORY SELECTION HANDLER (cat_ID) + armar_poke ---
             if (text === 'armar_poke') {
@@ -1088,7 +1151,71 @@ export async function processMessage(from: string, text: string): Promise<void> 
                     });
                     // Note: lock released in common cleanup below
                 } else {
-                    // Initialize Checkout from Cart
+                    // --- UPSELL LOGIC (Postres by Geranio) ---
+                    // Check if cart has desserts
+                    const hasDessert = session.cart.some((item: any) => {
+                        const product = allProducts.find(p => p.id === item.id || p.slug === item.id);
+                        // Check category or name
+                        if (item.name.toLowerCase().includes('postre') || item.name.toLowerCase().includes('cake') || item.name.toLowerCase().includes('pay')) return true;
+                        // Use category_id safely
+                        if (product && product.category_id) {
+                            const cat = categories.find(c => c.id === product.category_id);
+                            if (cat && (cat.slug === 'postres' || cat.name.toLowerCase().includes('postre'))) return true;
+                        }
+                        return false;
+                    });
+
+                    // Find Dessert Candidate to Upsell
+                    let upsellCandidate = null;
+                    if (!hasDessert) {
+                        const postreCat = categories.find(c => c.slug === 'postres' || c.name.toLowerCase().includes('postre'));
+                        if (postreCat) {
+                            const postres = allProducts.filter(p => p.category_id === postreCat.id);
+                            if (postres.length > 0) {
+                                // PRIORITY: "Geranio"
+                                const geranioItem = postres.find(p => p.name.toLowerCase().includes('geranio'));
+                                upsellCandidate = geranioItem || postres[0];
+                            }
+                        }
+                    }
+
+                    if (upsellCandidate) {
+                        console.log(`🍰 Triggering Upsell: ${upsellCandidate.name}`);
+                        session.mode = 'UPSELL_DESSERT';
+                        session.upsellProduct = {
+                            id: String(upsellCandidate.id),
+                            name: upsellCandidate.name,
+                            price: upsellCandidate.base_price
+                        };
+                        await updateSession(from, session);
+
+                        // Send Upsell Message (Image + Buttons)
+                        const msgText = `🍰 *¡Un momento!* Antes de cerrar...\n\n¿No se te antoja un *${upsellCandidate.name}* (by Geranio)? 🤤\n\nEs el complemento perfecto. ¿Lo agregamos?`;
+
+                        if (upsellCandidate.image_url) {
+                            await sendWhatsAppImage(from, upsellCandidate.image_url, msgText);
+                        } else {
+                            await sendWhatsApp(from, { text: msgText });
+                        }
+
+                        // Buttons (separate message often better for button stability/compatibility with image caption limits)
+                        await sendWhatsApp(from, {
+                            text: "¿Lo agregamos?", // Redundant text required for button message
+                            useButtons: true,
+                            buttons: [`Sí, agregar (${upsellCandidate.name})`, 'No, finalizar pedido']
+                        });
+
+                        // STOP here, wait for user response
+                        if (session.isProcessing) {
+                            session.isProcessing = false;
+                            await updateSession(from, session);
+                        }
+                        return;
+                    }
+
+                    // --- END UPSELL ---
+
+                    // Initialize Checkout from Cart (Normal Flow)
                     const initialTotal = session.cart.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
 
                     session.mode = 'CHECKOUT';
