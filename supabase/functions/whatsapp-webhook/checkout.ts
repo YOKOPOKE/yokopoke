@@ -126,9 +126,9 @@ export async function handleCheckoutFlow(
                 useButtons: true,
                 buttons: ['Confirmar Pedido', 'Cancelar'],
                 location: {
-                    lat: 16.254645,
-                    lng: -92.135200,
-                    name: "Yoko Poke",
+                    lat: 16.2292565,
+                    lng: -92.1350074,
+                    name: "Yoko Poke House",
                     address: "Calle Belisario Domínguez, Comitán"
                 }
             };

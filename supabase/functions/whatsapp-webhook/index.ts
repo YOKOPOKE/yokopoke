@@ -868,7 +868,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 session.builderState = undefined;
                 session.isProcessing = false;
                 sessionCleared = true;
-                await sendWhatsApp(from, { text: "🚫 Checkout cancelado. ¿Qué se te antoja ahora?" });
+                await sendWhatsApp(from, { text: "Entendido, no te preocupes. 👌\n\nHe cancelado la orden actual. Cuando quieras, aquí estaré listo para tomar tu pedido de nuevo. 🐼✨\n\n¿Te gustaría ver el menú?" });
                 return;
             }
 

@@ -37,11 +37,18 @@ serve(async (req) => {
                 message = "👨‍🍳 *EN PREPARACIÓN:* Su orden ha sido confirmada y nuestra cocina ha comenzado a prepararla.";
                 break;
             case 'out_for_delivery': // preparing -> out_for_delivery
-                message = "🚀 *EN CAMINO:* Su pedido ha salido del restaurante y va rumbo a su domicilio. ¡Le sugerimos estar atento!";
+                if (order.delivery_method === 'pickup') {
+                    message = "📦 *LISTO PARA RECOGER:* Tu pedido ya está empaquetado y listo en sucursal. ¡Te esperamos! 🍱✨";
+                } else {
+                    message = "🚀 *EN CAMINO:* Su pedido ha salido del restaurante y va rumbo a su domicilio. ¡Le sugerimos estar atento!";
+                }
                 break;
             case 'completed': // -> completed
-                // Generic message covering both Pickup and Delivery completion
-                message = "✅ *ENTREGADO / LISTO:* Su pedido ha sido completado. ¡Esperamos que disfrute su experiencia Yoko Poke!";
+                if (order.delivery_method === 'pickup') {
+                    message = "✅ *ENTREGADO:* ¡Gracias por visitarnos! Esperamos que disfrutes tu Yoko Poke. 🐼";
+                } else {
+                    message = "✅ *ENTREGADO:* Su pedido ha sido entregado. ¡Buen provecho! 🥢";
+                }
                 break;
             case 'cancelled':
                 message = "❌ *CANCELADO:* Su pedido ha sido cancelado. Si tiene dudas, contacte a soporte.";
