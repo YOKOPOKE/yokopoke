@@ -343,7 +343,9 @@ export async function handleCheckoutFlow(
 
         if (!isConfirmed) {
             return {
-                text: "⚠️ Por favor confirma tu orden escribiendo *Sí* o *Cancelar* para reiniciar."
+                text: "🤔 No entendí tu respuesta. ¿Confirmamos tu pedido?",
+                useButtons: true,
+                buttons: ['✅ Sí, Confirmar', '❌ Cancelar']
             };
         }
 

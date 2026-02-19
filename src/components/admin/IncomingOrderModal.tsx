@@ -131,7 +131,7 @@ export default function IncomingOrderModal() {
                         <div className="space-y-4 max-h-[30vh] overflow-y-auto custom-scrollbar pr-2 mb-8">
                             {Array.isArray(incomingOrder.items) && incomingOrder.items.map((item: any, i: number) => (
                                 <div key={i} className="flex gap-4 items-center p-3 hover:bg-slate-50 rounded-xl transition-colors border border-transparent hover:border-slate-100">
-                                    <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold text-sm shrink-0">1</div>
+                                    <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold text-sm shrink-0">{item.quantity || 1}</div>
                                     <div>
                                         <p className="font-bold text-slate-800">{item.name || 'Bowl Custom'}</p>
                                         <p className="text-xs text-slate-500 font-medium">

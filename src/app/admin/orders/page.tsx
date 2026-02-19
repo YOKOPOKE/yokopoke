@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/context/ToastContext';
+import { useAdmin } from '@/context/AdminContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +64,7 @@ export default function AdminOrdersPage() {
     const [activeTab, setActiveTab] = useState<'pending' | 'preparing' | 'out_for_delivery' | 'completed'>('pending');
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const { showToast } = useToast();
+    const { audioAllowed, unlockAudio } = useAdmin();
 
     const fetchOrders = async () => {
         setLoading(true);
@@ -178,6 +180,16 @@ export default function AdminOrdersPage() {
                         </h1>
                         <p className="text-xs text-slate-400 font-semibold mt-1">Gestión en tiempo real</p>
                     </div>
+
+                    {!audioAllowed && (
+                        <button
+                            onClick={unlockAudio}
+                            className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg shadow-rose-200 animate-pulse flex items-center gap-2"
+                        >
+                            <Bell size={18} className="animate-bounce" />
+                            Activar Sonido
+                        </button>
+                    )}
 
                     <div className="flex items-center gap-3">
                         <div className="hidden md:flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-xl">
@@ -436,8 +448,20 @@ const OrderDetailModal = ({ order, onClose, updateStatus }: { order: Order, onCl
                             ) : (
                                 <div>
                                     <p className="text-xs font-bold text-indigo-400 uppercase">Dirección de Entrega</p>
-                                    <p className="text-sm font-bold text-indigo-900 leading-snug">{order.address || 'Sin dirección registrada'}</p>
-                                    {/* Link a Maps podría ir aquí */}
+                                    <p className="text-sm font-bold text-indigo-900 leading-snug">{order.address || order.full_address || 'Sin dirección registrada'}</p>
+                                    {order.address_references && (
+                                        <p className="text-xs text-indigo-400 mt-1 italic">Ref: {order.address_references}</p>
+                                    )}
+                                    {(order.location?.latitude || order.location?.lat) && (
+                                        <a
+                                            href={`https://www.google.com/maps/search/?api=1&query=${order.location?.latitude || order.location?.lat},${order.location?.longitude || order.location?.lng}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1.5 rounded-lg shadow-md transition-colors"
+                                        >
+                                            🗺️ Abrir en Maps
+                                        </a>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -454,7 +478,7 @@ const OrderDetailModal = ({ order, onClose, updateStatus }: { order: Order, onCl
                                 if (!item) return null;
                                 return (
                                     <div key={i} className="flex gap-4 p-4 rounded-2xl border border-slate-100 bg-white shadow-sm">
-                                        <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black">1</div>
+                                        <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black">{item.quantity || 1}</div>
                                         <div className="flex-1">
                                             <p className="font-bold text-slate-900 text-lg">{item.name || 'Producto'}</p>
                                             <div className="mt-2 space-y-1 text-sm text-slate-600">

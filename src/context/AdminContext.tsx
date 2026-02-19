@@ -34,12 +34,15 @@ interface AdminContextType {
     setIncomingOrder: (order: Order | null) => void;
     stopAudio: () => void;
     testAudio: () => void;
+    audioAllowed: boolean;
+    unlockAudio: () => void;
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
     const [incomingOrder, setIncomingOrder] = useState<Order | null>(null);
+    const [audioAllowed, setAudioAllowed] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const supabase = createClient();
     const { showToast } = useToast();
@@ -53,24 +56,52 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
                 audio.preload = 'auto';
                 audioRef.current = audio;
 
+                // Try to unlock audio immediately (might fail if no interaction, that's okay)
+                // We just want to check if we CAN play
+                const playPromise = audio.play();
+                if (playPromise !== undefined) {
+                    playPromise
+                        .then(() => {
+                            audio.pause();
+                            audio.currentTime = 0;
+                            setAudioAllowed(true);
+                        })
+                        .catch(() => {
+                            setAudioAllowed(false);
+                            console.log("Audio autoplay blocked - User interaction required");
+                        });
+                }
+
                 // Request Notification Permission
                 if ("Notification" in window && Notification.permission !== "granted") {
-                    Notification.requestPermission().catch(err => console.log('Notification permission error:', err));
+                    Notification.requestPermission();
                 }
             } catch (err) {
                 console.error('Audio initialization failed:', err);
             }
         }
 
-        // Cleanup on unmount
         return () => {
             if (audioRef.current) {
                 audioRef.current.pause();
-                audioRef.current.src = '';
                 audioRef.current = null;
             }
         };
     }, []);
+
+    const unlockAudio = () => {
+        if (audioRef.current) {
+            audioRef.current.play().then(() => {
+                audioRef.current?.pause();
+                audioRef.current!.currentTime = 0;
+                setAudioAllowed(true);
+                showToast("🔊 Audio activado correctamente", "success");
+            }).catch(err => {
+                console.error("Failed to unlock audio:", err);
+                showToast("❌ No se pudo activar el audio", "error");
+            });
+        }
+    };
 
     // 2. Handle Incoming Order Effects (Audio + System Notification)
     useEffect(() => {
@@ -79,22 +110,18 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
         if (incomingOrder) {
             // Play Sound with error handling
-            try {
-                audio.play().catch((err) => {
-                    console.log('Audio autoplay blocked:', err);
-                    // Attempt to reload audio if it was garbage collected
-                    if (err.name === 'NotSupportedError' || err.name === 'AbortError') {
-                        const newAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-                        newAudio.loop = true;
-                        audioRef.current = newAudio;
-                        newAudio.play().catch(e => console.log('Retry failed:', e));
-                    }
-                });
-            } catch (err) {
-                console.error('Audio play error:', err);
-            }
+            const playSound = async () => {
+                try {
+                    audio.currentTime = 0;
+                    await audio.play();
+                } catch (err) {
+                    console.error("Audio playback failed:", err);
+                    setAudioAllowed(false); // Mark as blocked so UI prompts user
+                }
+            };
+            playSound();
 
-            // System Notification with error handling
+            // System Notification
             try {
                 if ("Notification" in window && Notification.permission === "granted") {
                     new Notification("🌮 NUEVO PEDIDO YOKO", {
@@ -106,12 +133,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
                 console.error('Notification error:', err);
             }
         } else {
-            // Stop Sound with error handling
+            // Stop Sound
             try {
-                if (audio) {
-                    audio.pause();
-                    audio.currentTime = 0;
-                }
+                audio.pause();
+                audio.currentTime = 0;
             } catch (err) {
                 console.error('Audio stop error:', err);
             }
@@ -119,32 +144,28 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }, [incomingOrder]);
 
     const stopAudio = () => {
-        try {
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current.currentTime = 0;
-            }
-        } catch (err) {
-            console.error('Stop audio error:', err);
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
         }
     };
 
     const testAudio = () => {
-        try {
-            if (audioRef.current) {
-                audioRef.current.currentTime = 0;
-                audioRef.current.play().catch(e => showToast("Autoplay bloqueado, interactúa primero", 'error'));
-                setTimeout(() => {
-                    try {
-                        if (audioRef.current && !incomingOrder) audioRef.current.pause();
-                    } catch (err) {
-                        console.error('Timeout audio error:', err);
-                    }
-                }, 2000);
-            }
-        } catch (err) {
-            console.error('Test audio error:', err);
-            showToast("Error al probar audio", 'error');
+        if (audioRef.current) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.play()
+                .then(() => setAudioAllowed(true))
+                .catch(() => {
+                    setAudioAllowed(false);
+                    showToast("Autoplay bloqueado. Haz clic en 'Activar Audio'", 'error');
+                });
+
+            setTimeout(() => {
+                if (audioRef.current && !incomingOrder) {
+                    audioRef.current.pause();
+                    audioRef.current.currentTime = 0;
+                }
+            }, 3000);
         }
     };
 
@@ -177,7 +198,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }, [incomingOrder]);
 
     return (
-        <AdminContext.Provider value={{ incomingOrder, setIncomingOrder, stopAudio, testAudio }}>
+        <AdminContext.Provider value={{ incomingOrder, setIncomingOrder, stopAudio, testAudio, audioAllowed, unlockAudio }}>
             {children}
         </AdminContext.Provider>
     );
