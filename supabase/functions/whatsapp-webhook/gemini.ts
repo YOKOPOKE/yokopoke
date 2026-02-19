@@ -4,29 +4,38 @@ import { ProductOption, ProductStep } from "./productService.ts";
 const apiKey = Deno.env.get("GEMINI_API_KEY");
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
-// Use 'gemini-3-pro-preview' for maximum reasoning and sales capability (User Request - 2026)
-const model = genAI ? genAI.getGenerativeModel({ model: "gemini-3-pro-preview" }) : null;
+// Model cascade: fast → lite fallback (Pro is too slow/unreliable for real-time)
+const primaryModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash" }) : null;
+const fallbackModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" }) : null;
 
-// Helper for Robustness
-async function generateContentWithRetry(input: any, retries = 2): Promise<any> {
-    if (!model) throw new Error("Model not initialized");
+// Bulletproof Gemini call — cascades through models, never hangs
+async function generateContentWithRetry(input: any, _retries = 1, _useFast = false): Promise<any> {
+    const models = [primaryModel, fallbackModel].filter(Boolean);
+    if (models.length === 0) throw new Error("No Gemini models initialized");
 
-    for (let i = 0; i <= retries; i++) {
+    for (let m = 0; m < models.length; m++) {
+        const currentModel = models[m]!;
+        const modelName = m === 0 ? 'flash' : 'flash-lite';
         try {
-            return await model.generateContent(input);
+            // Race against an 8s timeout — fast enough for WhatsApp UX
+            const result = await Promise.race([
+                currentModel.generateContent(input),
+                new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout (8s) on ${modelName}`)), 8000))
+            ]);
+            return result;
         } catch (e: any) {
-            console.warn(`⚠️ Gemini API Error (Attempt ${i + 1}/${retries + 1}):`, e.message);
+            console.warn(`⚠️ Gemini ${modelName} failed:`, e.message);
 
-            // Don't retry client errors (4xx) — they won't succeed on retry
+            // Don't try fallback for client errors (4xx)
             const status = e.status || e.httpStatusCode || 0;
             if (status >= 400 && status < 500) throw e;
 
-            // If it's the last attempt, throw.
-            if (i === retries) throw e;
-
-            // Exponential Backoff: 500ms, 1000ms, 2000ms
-            const delay = 500 * Math.pow(2, i);
-            await new Promise(r => setTimeout(r, delay));
+            // If we have more models to try, continue the cascade
+            if (m < models.length - 1) {
+                console.log(`🔄 Cascading to ${m === 0 ? 'flash-lite' : 'next'} model...`);
+                continue;
+            }
+            throw e; // All models exhausted
         }
     }
 }
@@ -38,7 +47,7 @@ export async function interpretSelection(
     userText: string,
     availableOptions: ProductOption[]
 ): Promise<number[]> {
-    if (!model) {
+    if (!primaryModel) {
         console.error("Gemini API Key not found");
         return [];
     }
@@ -64,7 +73,7 @@ export async function interpretSelection(
         OUTPUT: Return ONLY a JSON array of numbers. Example: [101, 102].
         `;
 
-        const result = await generateContentWithRetry(prompt);
+        const result = await generateContentWithRetry(prompt, 1, true);
         const text = result.response.text();
         // Robust JSON extraction: Find first { and last }
         const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -88,7 +97,7 @@ export async function generateConversationalResponse(
     remainingCount: { included: number, absolute: number | 'varios' },
     fullSummary?: string // NEW: Summary of all previous steps
 ): Promise<string> {
-    if (!model) return `✅ Llevas: ${currentSelections.join(', ')}. Siguiente: ${nextStepLabel}.`;
+    if (!primaryModel) return `✅ Llevas: ${currentSelections.join(', ')}. Siguiente: ${nextStepLabel}.`;
 
     const prompt = `
     ACT AS: "Yoko Bot", a world-class sales waiter at Yoko Poke.
@@ -117,7 +126,7 @@ export async function generateConversationalResponse(
     `;
 
     try {
-        const result = await generateContentWithRetry(prompt);
+        const result = await generateContentWithRetry(prompt, 1, true);
         return result.response.text().trim();
     } catch (e) {
         return `✅ Listo, agregamos: ${currentSelections.join(', ')}.\nAhora vamos con *${nextStepLabel}*.`;
@@ -129,7 +138,7 @@ export async function analyzeIntent(
     history: string[] = [],
     cart: any[] = [] // NEW: Cart Context
 ): Promise<{ intent: string, entities: any }> {
-    if (!model) return { intent: 'unknown', entities: {} };
+    if (!primaryModel) return { intent: 'unknown', entities: {} };
 
     const historyContext = history.length > 0 ? `HISTORIAL DE CONVERSACIÓN:\n${history.map(m => `- ${m}`).join('\n')}\n` : "";
     const cartContext = cart.length > 0 ? `CARRITO ACTUAL (${cart.length} items): ${cart.map(i => i.name).join(', ')}` : "CARRITO VACÍO";
@@ -177,7 +186,7 @@ export async function analyzeIntent(
     `;
 
     try {
-        const result = await generateContentWithRetry(prompt);
+        const result = await generateContentWithRetry(prompt, 1, true);
         const text = result.response.text();
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         const cleanText = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -219,7 +228,7 @@ export async function generateSalesResponse(
     conversationHistory: Array<{ role: string, text: string }> = [],
     customerProfile?: { favorites?: string[], orderCount?: number }
 ): Promise<SalesResponse> {
-    if (!model) return { text: "¡Hola! ¿En qué te puedo ayudar hoy? 🥗" };
+    if (!primaryModel) return { text: "¡Hola! ¿En qué te puedo ayudar hoy? 🥗" };
 
     const productImagesContext = productList
         .filter(p => p.image_url)
@@ -290,7 +299,7 @@ export async function generateSalesResponse(
     `;
 
     try {
-        const result = await generateContentWithRetry(prompt);
+        const result = await generateContentWithRetry(prompt, 1, true);
         const text = result.response.text();
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         const cleanText = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -313,7 +322,7 @@ export async function generateSalesResponse(
  * Transcribes Audio (Voice Notes) into Text using Gemini Multimodal
  */
 export async function transcribeAudio(audio: { mimeType: string; data: string }): Promise<string> {
-    if (!model) return "";
+    if (!primaryModel) return "";
 
     try {
         const result = await generateContentWithRetry([
@@ -324,7 +333,7 @@ export async function transcribeAudio(audio: { mimeType: string; data: string })
                 }
             },
             { text: "Transcribe este audio exactamente como fue dicho. Retorna SOLO el texto plano, sin comentarios ni formato." }
-        ]);
+        ], 1, true);
 
         return result.response.text().trim();
     } catch (e) {
@@ -340,7 +349,7 @@ export async function generatePersonalizedGreeting(
     customerPhone: string,
     orderHistory: Array<{ items: Array<{ name: string; quantity: number }>, order_date: string }>
 ): Promise<string> {
-    if (!model) return "¡Hola! Bienvenido a Yoko Poke 🥗";
+    if (!primaryModel) return "¡Hola! Bienvenido a Yoko Poke 🥗";
 
     try {
         let historyContext = "";
@@ -381,7 +390,7 @@ REGLAS CRÍTICAS DE SALIDA:
 `;
         }
 
-        const result = await generateContentWithRetry(historyContext);
+        const result = await generateContentWithRetry(historyContext, 1, true);
         let greeting = result.response.text().trim();
 
         // Strip common Gemini meta-text preamble

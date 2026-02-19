@@ -712,8 +712,8 @@ export async function processMessage(from: string, text: string): Promise<void> 
     session.processingStart = Date.now();
     await updateSession(from, session);
 
-    // ⏳ DEBOUNCE: Wait 10s for rapid-fire messages to accumulate
-    await new Promise(r => setTimeout(r, 10000));
+    // ⏳ DEBOUNCE: Wait 5s for rapid-fire messages to accumulate
+    await new Promise(r => setTimeout(r, 5000));
 
     // Re-read session to get ALL queued messages
     let workSession = await getSession(from);
@@ -792,8 +792,11 @@ export async function processMessage(from: string, text: string): Promise<void> 
         }
 
         // 2. UPSELL MODE (Postres by Geranio)
-        else if (session.mode === 'UPSELL_DESSERT' && session.upsellProduct) {
+        // PRE-CHECK: Detect if user wants to escape upsell before entering mode handler
+        if (session.mode === 'UPSELL_DESSERT' && session.upsellProduct) {
             const lower = aggregatedText.toLowerCase();
+            const escapeKeywords = ['ver', 'menu', 'menú', 'quiero', 'dame', 'enseña', 'muestra', 'entradas', 'pokes', 'bebidas', 'postres', 'carta', 'pedido', 'otro', 'armar', 'hola', 'ayuda'];
+            const isEscaping = escapeKeywords.some(k => lower.includes(k)) || lower.split(' ').length > 5;
             const positives = ['si', 'sí', 'claro', 'va', 'dale', 'agrega', 'agregar', 'ponlo', 'ok', 'bueno', session.upsellProduct.name.toLowerCase()];
             const negatives = ['no', 'gracias', 'nel', 'finalizar', 'ya no', 'cerrar', 'listo', 'pagar', 'checkout', 'pago'];
 
@@ -806,11 +809,9 @@ export async function processMessage(from: string, text: string): Promise<void> 
                     price: session.upsellProduct.price,
                     quantity: 1
                 });
-                // Feedback + Continue to Checkout
                 const subtotal = session.cart.reduce((s: number, i: any) => s + (i.price * (i.quantity || 1)), 0);
                 await sendWhatsApp(from, { text: `✅ ¡Agregado! 🍰\n\nTu total actual: $${subtotal}` });
 
-                // Initialize Checkout
                 session.mode = 'CHECKOUT';
                 session.checkoutState = {
                     productSlug: 'custom-order',
@@ -826,7 +827,6 @@ export async function processMessage(from: string, text: string): Promise<void> 
             }
 
             else if (negatives.some(k => lower.includes(k))) {
-                // Skip upsell
                 const subtotal = session.cart ? session.cart.reduce((s: number, i: any) => s + (i.price * (i.quantity || 1)), 0) : 0;
                 session.mode = 'CHECKOUT';
                 session.checkoutState = {
@@ -842,8 +842,16 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 return;
             }
 
+            else if (isEscaping) {
+                // User wants to do something else — exit upsell, fall through to NORMAL processing
+                console.log(`🚪 User escaping upsell mode: "${aggregatedText}"`);
+                session.mode = 'NORMAL';
+                delete session.upsellProduct;
+                // DON'T return — will fall through to the NORMAL else block below
+            }
+
             else {
-                // Repeater
+                // Ambiguous short response — ask once more
                 await sendWhatsApp(from, {
                     text: "¿Te animas con el postre? 🍰\nResponde 'Sí' para agregarlo o 'No' para continuar.",
                     useButtons: true,
@@ -854,7 +862,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
         }
 
         // 3. CHECKOUT MODE
-        else if (session.mode === 'CHECKOUT' && session.checkoutState) {
+        if (session.mode === 'CHECKOUT' && session.checkoutState) {
             console.log(`💳 Processing Checkout Flow for ${from}`);
 
             // Check for Exit Keywords (broad Spanish cancel detection)
@@ -876,7 +884,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
             const response = await handleCheckoutFlow(from, aggregatedText, session, sendButtonMessage, sendWhatsAppText);
 
             // Clear session if checkout completed or cancelled
-            if (response.text.includes('ORDEN CONFIRMADA') || response.text.includes('cancelada')) {
+            if (response.text && (response.text.includes('ORDEN CONFIRMADA') || response.text.includes('cancelada'))) {
                 await clearSession(from);
                 // #2 FIX: Update LOCAL session + flag to prevent finally block from overwriting
                 session.mode = 'NORMAL';
@@ -888,7 +896,10 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 await updateSession(from, session);
             }
 
-            await sendWhatsApp(from, response);
+            // Only send if checkout didn't already send the message directly
+            if (response.text) {
+                await sendWhatsApp(from, response);
+            }
             // Save conversation history for checkout
             if (!sessionCleared) {
                 if (!session.conversationHistory) session.conversationHistory = [];
@@ -899,8 +910,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
         }
 
         // B. GENERAL AI / KEYWORD LOGIC (Normal Mode)
-        // Only reaches here if NOT in a special mode.
-        else {
+        else if (session.mode === 'NORMAL' || !session.mode) {
             // ... (Fallthrough to existing AI logic below) ...
 
             // --- IGNORE INTERNAL BUTTON IDS ---
@@ -1285,22 +1295,27 @@ export async function processMessage(from: string, text: string): Promise<void> 
                         }
 
                         if (realProduct) {
-                            session.cart.push({
-                                id: String(realProduct.id || realProduct.slug),
-                                name: realProduct.name,
-                                price: realProduct.base_price,
-                                quantity: requested.quantity || 1
-                            });
-                            console.log(`✅ Validated & Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
+                            // Consolidate: if same product exists, increase quantity
+                            const existingItem = session.cart.find((c: any) => String(c.id) === String(realProduct!.id) || c.name === realProduct!.name);
+                            if (existingItem) {
+                                existingItem.quantity = (existingItem.quantity || 1) + (requested.quantity || 1);
+                                console.log(`✅ Updated Cart: ${realProduct.name} → qty ${existingItem.quantity}`);
+                            } else {
+                                session.cart.push({
+                                    id: String(realProduct.id || realProduct.slug),
+                                    name: realProduct.name,
+                                    price: realProduct.base_price,
+                                    quantity: requested.quantity || 1
+                                });
+                                console.log(`✅ Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
+                            }
                         } else {
                             console.warn(`🛑 BLOCKED Hallucinated Product: ${requestedName} (ID: ${requestedId})`);
                         }
                     }
-                    // Build mini cart summary and append to AI response
+                    // Build premium cart summary
                     if (session.cart.length > 0) {
-                        const cartLines = session.cart.map(i => `• ${i.quantity}x ${i.name} — $${i.price * i.quantity}`).join('\n');
-                        const cartTotal = session.cart.reduce((s, i) => s + (i.price * i.quantity), 0);
-                        salesRes.text += `\n\n🛒 *Tu carrito:*\n${cartLines}\n💰 *Subtotal: $${cartTotal}*`;
+                        salesRes.text += `\n\n` + formatCartDisplay(session.cart);
                     }
                     // Save immediately
                     await updateSession(from, session);
@@ -1530,6 +1545,32 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
         }
     }
 
+    // 6.4 CANCEL / CLEAR CART
+    const cancelCartTriggers = ['cancela', 'cancelar', 'vaciar', 'borrar', 'limpiar', 'quitar todo', 'eliminar'];
+    const cartWords = ['carrito', 'carroto', 'pedido', 'orden', 'todo'];
+    const isCancelCart = cancelCartTriggers.some(t => lowerText.includes(t)) && cartWords.some(c => lowerText.includes(c));
+    if (isCancelCart) {
+        if (session.cart && session.cart.length > 0) {
+            const itemCount = session.cart.length;
+            session.cart = [];
+            session.mode = 'NORMAL';
+            session.checkoutState = undefined;
+            delete session.upsellProduct;
+            await updateSession(from, session);
+            return {
+                text: `🗑️ ¡Listo! Tu carrito ha sido vaciado (${itemCount} producto${itemCount > 1 ? 's' : ''} eliminado${itemCount > 1 ? 's' : ''}).\n\n¿Quieres empezar de nuevo? 🐼`,
+                useButtons: true,
+                buttons: ['Ver Menú', '¿Qué me recomiendas?']
+            };
+        } else {
+            return {
+                text: "Tu carrito ya está vacío 🛒\n\n¿Qué se te antoja? 😋",
+                useButtons: true,
+                buttons: ['Ver Menú', 'Pokes de la Casa']
+            };
+        }
+    }
+
     // 6.5 Farewell / Thanks (natural closure)
     const farewells = ['adiós', 'adios', 'bye', 'chao', 'nos vemos', 'hasta luego'];
     const thanks = ['gracias', 'grax', 'thx', 'thanks'];
@@ -1620,7 +1661,33 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
 // async function startBuilder(from: string, slug: string) { ... }
 // See handleInstantKeywords for the web redirect that replaces this.
 
+// --- CART FORMATTING HELPER ---
+function formatCartDisplay(cart: any[]): string {
+    if (!cart || cart.length === 0) return "🛒 Tu carrito está vacío.";
+
+    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    const lines = cart.map(item => {
+        const name = item.name.toLowerCase();
+        let emoji = "📦";
+        if (name.includes("poke")) emoji = "🥗";
+        else if (name.includes("gyoza")) emoji = "🥟";
+        else if (name.includes("papa")) emoji = "🍟";
+        else if (name.includes("kushiague")) emoji = "🍢"; // Use🍡 or 🍢 for kushiage
+        else if (name.includes("edamame")) emoji = "🌿";
+        else if (name.includes("coca") || name.includes("agua") || name.includes("calpico") || name.includes("bebida") || name.includes("tea") || name.includes("limonada") || name.includes("cerveza") || name.includes("beer")) emoji = "🥤";
+        else if (name.includes("brownie") || name.includes("postre") || name.includes("cake") || name.includes("geranio")) emoji = "🍰";
+
+        return `${emoji} *${item.quantity}x ${item.name}* — $${item.price * item.quantity}`;
+    });
+
+    return `*🛍️ Tu carrito:*\n${lines.join('\n')}\n\n💰 *Total: $${total}*`;
+}
+
 export async function sendWhatsApp(to: string, response: BotResponse) {
+    // Guard: Skip entirely if no content to send
+    if (!response.text && !response.useList && !response.location) return;
+
     // Support list messages natively
     if (response.useList && response.listData) {
         const success = await sendListMessage(to, response.listData);
@@ -1630,6 +1697,7 @@ export async function sendWhatsApp(to: string, response: BotResponse) {
     if (response.location) {
         await sendWhatsAppLocation(to, response.location.lat, response.location.lng, response.location.name, response.location.address);
     }
+    if (!response.text) return; // Nothing left to send
     if (response.useButtons && response.buttons && response.buttons.length > 0) {
         await sendWhatsAppButtons(to, response.text, response.buttons);
     } else {
@@ -1736,6 +1804,10 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 3, ba
 }
 
 async function sendWhatsAppText(to: string, message: string) {
+    if (!message || message.trim().length === 0) {
+        console.warn('⚠️ Skipping empty text message');
+        return;
+    }
     try {
         await fetchWithRetry(
             `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
