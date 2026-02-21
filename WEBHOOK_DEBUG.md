@@ -1,87 +1,48 @@
-# 🔧 Resolver Error de Verificación del Webhook
+# Troubleshooting: Validación Webhook WhatsApp
 
-## ❌ Error: "No se ha podido validar la URL de devolución de llamada"
+Guía técnica para resolver problemas de validación de la URL del webhook en Meta for Developers.
 
-Este error tiene **3 causas principales**:
+## Causas Comunes de fallo en Validación
 
----
+### 1. Configuración de `WHATSAPP_VERIFY_TOKEN`
+El token de verificación debe estar presente en los secrets de la función en Supabase.
 
-## ✅ Solución 1: Verificar que WHATSAPP_VERIFY_TOKEN esté configurado
-
-1. Ve al **Dashboard de Supabase**: https://supabase.com/dashboard/project/xsolxbroqqjkoseksmny/settings/functions
-2. Busca **"WHATSAPP_VERIFY_TOKEN"** en los secrets
-3. Si **NO está**, agrégalo:
-   - **Nombre:** `WHATSAPP_VERIFY_TOKEN`
-   - **Valor:** Un string cualquiera (ejemplo: `yokopoke_2026`)
-   - **IMPORTANTE:** Recuerda este valor exacto
-
-4. **Redeploy la función** para que tome el nuevo secret:
+**Verificación:**
+1. Acceder al dashboard de Supabase: `Settings > Edge Functions`.
+2. Verificar la existencia de `WHATSAPP_VERIFY_TOKEN`.
+3. Si el token se acaba de añadir o modificar, es necesario re-desplegar la función:
    ```bash
    npx supabase functions deploy whatsapp-webhook
    ```
 
----
+### 2. Formato de la URL
+Meta requiere una URL accesible y con la estructura correcta.
 
-## ✅ Solución 2: Verificar la URL exacta
+**Estructura esperada:**
+`https://<PROJECT_REF>.supabase.co/functions/v1/whatsapp-webhook`
 
-La URL del webhook debe ser **exactamente**:
-```
-https://xsolxbroqqjkoseksmny.supabase.co/functions/v1/whatsapp-webhook
-```
+**Errores comunes:**
+- Espacios en blanco al inicio o final.
+- Omisión del segmento `/v1/`.
+- Protocolo HTTP en lugar de HTTPS.
 
-**NO debe tener**:
-- ❌ Espacios
-- ❌ Caracteres extra
-- ❌ HTTPS incorrecto
-- ❌ `/v1/` faltante
+### 3. Coincidencia exacta del Token
+El Verify Token configurado en el panel de Meta debe ser idéntico al secret en Supabase (case-sensitive).
 
----
+## Prueba de Validación Manual
 
-## ✅ Solución 3: El Verify Token debe coincidir EXACTAMENTE
-
-En Meta/Facebook:
-1. **Verify Token:** Debe ser **EXACTAMENTE** el mismo que pusiste en Supabase
-2. **Case-sensitive:** `YokoPoke_2026` ≠ `yokopoke_2026`
-3. Sin espacios al inicio o final
-
----
-
-## 🧪 Probar manualmente
-
-Para verificar que la función responde correctamente, abre esta URL en tu navegador:
+Se puede simular la petición de validación de Meta desde un navegador para confirmar que la función responde con el `hub.challenge` correcto:
 
 ```
-https://xsolxbroqqjkoseksmny.supabase.co/functions/v1/whatsapp-webhook?hub.mode=subscribe&hub.verify_token=TU_TOKEN&hub.challenge=test123
+https://<PROJECT_REF>.supabase.co/functions/v1/whatsapp-webhook?hub.mode=subscribe&hub.verify_token=<TU_TOKEN>&hub.challenge=test_check
 ```
-
-Reemplaza `TU_TOKEN` con el valor que pusiste en `WHATSAPP_VERIFY_TOKEN`.
 
 **Resultado esperado:**
-- ✅ Si funciona: Debe devolver **"test123"**
-- ❌ Si falla: Verifica el token
+- La respuesta debe ser únicamente el string: `test_check`.
 
----
+## Monitoreo de Logs
 
-## 📋 Checklist de Verificación
+Para identificar fallos específicos durante el intento de validación desde Meta, revisar los logs de la función:
 
-Confirma que:
-- [ ] `WHATSAPP_VERIFY_TOKEN` está en los secrets de Supabase
-- [ ] Hiciste redeploy después de agregar el secret
-- [ ] La URL en Meta es exactamente: `https://xsolxbroqqjkoseksmny.supabase.co/functions/v1/whatsapp-webhook`
-- [ ] El Verify Token en Meta coincide EXACTAMENTE con el de Supabase
-- [ ] La función está desplegada (VERSION 2 o mayor)
-
----
-
-## 🔍 Ver errores en tiempo real
-
-Para ver qué está pasando:
-
-1. Ve a: https://supabase.com/dashboard/project/xsolxbroqqjkoseksmny/functions/whatsapp-webhook/details
-2. Click en la pestaña **"Logs"**
-3. Intenta verificar el webhook en Meta otra vez
-4. Los logs te dirán qué está fallando
-
----
-
-**¿Cuál es el valor que pusiste para `WHATSAPP_VERIFY_TOKEN`?** Te ayudo a verificar que todo coincida.
+1. Dashboard de Supabase: `Edge Functions > whatsapp-webhook > Logs`.
+2. Filtrar por errores o buscar la petición GET entrante de Meta.

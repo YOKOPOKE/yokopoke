@@ -1,69 +1,41 @@
-# 🚀 Desplegar Bot de WhatsApp a Supabase
+# Guía de Despliegue: WhatsApp Bot (Supabase)
 
-## Paso 1: Desplegar la Edge Function
+Pasos técnicos para el despliegue de las Edge Functions y configuración del Webhook oficial.
+
+## 1. Despliegue de Edge Functions
 
 ```bash
-# Inicia sesión en Supabase (solo la primera vez)
+# Login inicial
 npx supabase login
 
-# Despliega la función
-npx supabase functions deploy whatsapp-webhook --project-ref TU_PROJECT_REF
+# Despliegue de la función de webhook
+npx supabase functions deploy whatsapp-webhook --project-ref <TU_PROJECT_REF>
 ```
 
-**Nota:** Tu `PROJECT_REF` lo encuentras en el dashboard de Supabase en la URL del proyecto.
+## 2. Variables de Entorno (Secrets)
 
----
+Configura los siguientes secrets en el dashboard de Supabase (Settings > Edge Functions):
 
-## Paso 2: Configurar Variables de Entorno
+| Variable | Descripción |
+|----------|-------------|
+| `WHATSAPP_PHONE_ID` | ID de la terminal de WhatsApp en Meta |
+| `WHATSAPP_ACCESS_TOKEN` | Token de acceso permanente de Meta |
+| `WHATSAPP_VERIFY_TOKEN` | Token caprichoso para validación del webhook |
+| `GEMINI_API_KEY` | Key de Google AI Studio |
+| `SUPABASE_URL` | Endpoint de tu API de Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Key administrativa de Supabase |
 
-En el dashboard de Supabase:
+## 3. Configuración en Meta Business Suite
 
-1. Ve a **Settings > Edge Functions > Environment Variables**
-2. Agrega estas variables:
+1. URL del Webhook: `https://<TU_PROJECT_REF>.supabase.co/functions/v1/whatsapp-webhook`
+2. Verify Token: El valor configurado en `WHATSAPP_VERIFY_TOKEN`.
+3. Suscribirse al campo: `messages`.
 
-```
-WHATSAPP_PHONE_ID=tu_phone_id
-WHATSAPP_ACCESS_TOKEN=tu_access_token
-WHATSAPP_VERIFY_TOKEN=tu_verify_token (el mismo que usarás en Meta)
-SUPABASE_URL=tu_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
-```
+## 4. Debugging
 
----
-
-## Paso 3: Actualizar Webhook en Meta
-
-1. Ve a: https://developers.facebook.com/apps/
-2. Selecciona tu app de WhatsApp
-3. **WhatsApp > Configuration**
-4. En "Webhook", cambia la URL a:
-
-```
-https://TU_PROJECT_REF.supabase.co/functions/v1/whatsapp-webhook
-```
-
-5. **Verify Token**: El mismo que pusiste en `WHATSAPP_VERIFY_TOKEN`
-6. Click **"Verify and Save"**
-7. Marca **"messages"** en Webhook fields
-
----
-
-## Paso 4: Probar el Bot
-
-Envía mensajes a tu número de WhatsApp:
-- "hola"
-- "/menu"
-- "/ayuda"
-- "/horarios"
-
-¡El bot debe responder con las nuevas funcionalidades! 🎉
-
----
-
-## 🔍 Ver logs (debugging)
+Para monitorear errores en tiempo real:
 
 ```bash
-npx supabase functions logs whatsapp-webhook --project-ref TU_PROJECT_REF
+npx supabase functions logs whatsapp-webhook --project-ref <TU_PROJECT_REF>
 ```
-
-O en el dashboard: **Edge Functions > whatsapp-webhook > Logs**
+O directamente en el panel de logs de Supabase Edge Functions.
