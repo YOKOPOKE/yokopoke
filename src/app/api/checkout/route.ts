@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
 
+interface CheckoutItem {
+    name?: string;
+    productType?: string;
+    price: number;
+    image?: string;
+    details?: { value: string }[];
+}
+
 export async function POST(req: Request) {
     try {
         const stripe = getStripe();
@@ -8,18 +16,23 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { items, orderId, customerEmail } = body;
 
-        if (!items || !orderId) {
+        if (!items || !Array.isArray(items) || items.length === 0 || !orderId) {
             return new NextResponse('Missing required fields', { status: 400 });
         }
 
-        // Determine Base URL (Dynamic for localhost vs Vercel)
+        // Determine Base URL
         const origin = req.headers.get('origin') || 'http://localhost:3000';
 
-        const lineItems = items.map((item: any) => {
-            // Construct description from details
+        const lineItems = (items as CheckoutItem[]).map((item) => {
+            // Server-side price validation
+            const price = Number(item.price);
+            if (!price || price <= 0 || price > 10000) {
+                throw new Error('INVALID_PRICE');
+            }
+
             let description = item.productType === 'bowl' ? 'Poke Bowl' : 'Sushi Burger';
-            if (item.details?.length > 0) {
-                description += ' (' + item.details.map((d: any) => d.value).join(', ') + ')';
+            if (item.details?.length && item.details.length > 0) {
+                description += ' (' + item.details.map((d) => d.value).join(', ') + ')';
             }
 
             return {
@@ -27,10 +40,10 @@ export async function POST(req: Request) {
                     currency: 'mxn',
                     product_data: {
                         name: item.name || (item.productType === 'bowl' ? 'Poke Bowl' : 'Sushi Burger'),
-                        description: description.slice(0, 100), // Stripe limit
+                        description: description.slice(0, 100),
                         images: item.image ? [item.image] : [],
                     },
-                    unit_amount: Math.round(item.price * 100), // Centavos
+                    unit_amount: Math.round(price * 100),
                 },
                 quantity: 1,
             };
@@ -39,8 +52,8 @@ export async function POST(req: Request) {
         const session = await stripe.checkout.sessions.create({
             line_items: lineItems,
             mode: 'payment',
-            ui_mode: 'embedded', // Embedded Checkout
-            return_url: `${origin}/return?session_id={CHECKOUT_SESSION_ID}&orderId=${orderId}`, // Validation Page
+            ui_mode: 'embedded',
+            return_url: `${origin}/return?session_id={CHECKOUT_SESSION_ID}&orderId=${orderId}`,
             metadata: {
                 orderId: orderId,
             },
@@ -49,11 +62,16 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ clientSecret: session.client_secret });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Stripe Checkout Error:", error);
-        // Return JSON even on error
+
+        // Don't expose internal error details to the client
+        const message = error instanceof Error && error.message === 'INVALID_PRICE'
+            ? 'Precio inválido detectado. Intenta de nuevo.'
+            : 'Error al procesar el pago. Intenta de nuevo.';
+
         return NextResponse.json(
-            { error: error.message || "Internal Server Error" },
+            { error: message },
             { status: 500 }
         );
     }

@@ -28,18 +28,16 @@ export async function POST(req: NextRequest) {
         const rawBody = await req.text();
         const signature = req.headers.get('x-hub-signature-256') || '';
 
-        // 2. Verify Security
-        if (process.env.NODE_ENV === 'production' || APP_SECRET) {
-            if (!APP_SECRET) {
-                console.error("CRITICAL: WHATSAPP_APP_SECRET missing in env!");
-                return new NextResponse('Server Config Error', { status: 500 });
-            }
+        // 2. Verify Security — ALWAYS verify signature
+        if (!APP_SECRET) {
+            console.error("CRITICAL: WHATSAPP_APP_SECRET missing in env!");
+            return new NextResponse('Server Config Error', { status: 500 });
+        }
 
-            const isValid = verifySignature(rawBody, signature, APP_SECRET);
-            if (!isValid) {
-                console.warn("⚠️ Invalid Signature detected! Request rejected.");
-                return new NextResponse('Unauthorized', { status: 401 });
-            }
+        const isValid = verifySignature(rawBody, signature, APP_SECRET);
+        if (!isValid) {
+            console.warn("⚠️ Invalid Signature detected! Request rejected.");
+            return new NextResponse('Unauthorized', { status: 401 });
         }
 
         const body = JSON.parse(rawBody);

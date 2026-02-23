@@ -1,44 +1,65 @@
 "use server";
 
 import { createClient } from "@/lib/supabase";
-import { notifyAdminNewOrder } from "@/lib/whatsapp";
 import { OrderItem } from "@/context/CartContext";
 
-export async function submitOrder(formData: any, items: OrderItem[], total: number) {
+interface OrderFormData {
+    name: string;
+    phone: string;
+    address?: string;
+    instructions?: string;
+    paymentMethod?: 'cash' | 'card';
+}
+
+export async function submitOrder(formData: OrderFormData, items: OrderItem[], total: number) {
     const supabase = createClient();
 
-    // 1. Insert into 'orders' table
-    // Note: We need to make sure the 'orders' table exists and matches this structure.
-    // Based on previous context, we might need to create it or infer it.
-    // For now, I'll assume a basic structure or create a migration if needed.
+    // Input validation
+    if (!formData.name || formData.name.trim().length < 2) {
+        return { success: false, error: "Nombre inválido (mínimo 2 caracteres)." };
+    }
+    if (!formData.phone || formData.phone.trim().length < 10) {
+        return { success: false, error: "Teléfono inválido (mínimo 10 dígitos)." };
+    }
+    if (!items || items.length === 0) {
+        return { success: false, error: "El pedido debe contener al menos un producto." };
+    }
 
-    // Determine initial status based on payment intent
-    // If this is triggering a Stripe checkout, we might want 'awaiting_payment'
-    // But CartDrawer calls this generically. Let's accept a 'paymentMethod' param.
+    // Server-side price validation: recalculate total from items
+    const serverTotal = items.reduce((sum, item) => {
+        const price = Number(item.price) || 0;
+        const quantity = Number(item.quantity) || 1;
+        if (price <= 0 || price > 10000) return sum; // Reject unreasonable prices
+        return sum + (price * quantity);
+    }, 0);
+
+    // Reject if client total differs significantly from server calculation
+    // Allow small rounding differences (up to $1)
+    if (Math.abs(serverTotal - total) > 1) {
+        console.error(`Price mismatch detected! Client: $${total}, Server: $${serverTotal}`);
+        return { success: false, error: "Error de validación de precio. Intenta de nuevo." };
+    }
 
     const paymentMethod = formData.paymentMethod || 'cash';
     const initialStatus = paymentMethod === 'card' ? 'awaiting_payment' : 'pending';
     const initialPaymentStatus = paymentMethod === 'card' ? 'unpaid' : 'pending_cash';
 
     const { data: order, error } = await supabase.from('orders').insert({
-        customer_name: formData.name,
-        customer_phone: formData.phone,
-        customer_address: formData.address,
-        total: total,
+        customer_name: formData.name.trim(),
+        customer_phone: formData.phone.trim(),
+        customer_address: formData.address?.trim() || '',
+        total: serverTotal, // Use server-validated total
         status: initialStatus,
         payment_status: initialPaymentStatus,
         payment_method: paymentMethod,
-        items: items, // Storing JSONB
-        notes: formData.instructions || ''
+        items: items,
+        notes: formData.instructions?.trim() || ''
     }).select().single();
 
     if (error) {
         console.error("Order Insert Error:", error);
-        return { success: false, error: error.message };
+        return { success: false, error: "Error al crear el pedido. Intenta de nuevo." };
     }
-
-    // 2. Notification handled by Supabase Edge Function (Database Webhook)
-    // await notifyAdminNewOrder(order.id, formData.name, total);
 
     return { success: true, orderId: order.id };
 }

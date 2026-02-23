@@ -8,6 +8,24 @@ const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 const primaryModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash" }) : null;
 const fallbackModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" }) : null;
 
+// Sanitize user input to mitigate prompt injection
+const VALID_INTENTS = ['ADD_TO_CART', 'CATEGORY_FILTER', 'INFO', 'STATUS', 'CHAT', 'CHECKOUT', 'START_BUILDER', 'unknown'];
+
+function sanitizeUserInput(text: string): string {
+    let sanitized = text.slice(0, 500);
+    sanitized = sanitized
+        .replace(/ignora\s+(todo|las|lo|el|la)/gi, '')
+        .replace(/ignore\s+(all|everything|above|previous)/gi, '')
+        .replace(/olvida\s+(todo|las|lo)/gi, '')
+        .replace(/forget\s+(all|everything)/gi, '')
+        .replace(/new\s+instructions?/gi, '')
+        .replace(/system\s*prompt/gi, '')
+        .replace(/act\s+as/gi, '')
+        .replace(/you\s+are\s+now/gi, '')
+        .trim();
+    return sanitized;
+}
+
 // Bulletproof Gemini call — cascades through models, never hangs
 async function generateContentWithRetry(input: any, _retries = 1, _useFast = false): Promise<any> {
     const models = [primaryModel, fallbackModel].filter(Boolean);
@@ -58,7 +76,7 @@ export async function interpretSelection(
         const prompt = `
         ACT AS: An expert, persuasive Poke Bowl waiter who wants to sell.
         CONTEXT: The user is selecting ingredients for a specific step.
-        USER INPUT: "${userText}"
+        USER INPUT: "${sanitizeUserInput(userText)}"
         AVAILABLE OPTIONS (ID: Name):
         ${optionsList}
 
@@ -149,7 +167,7 @@ export async function analyzeIntent(
 
     ${historyContext}
     ${cartContext}
-    MENSAJE ACTUAL DEL USUARIO: "${userText}"
+    MENSAJE ACTUAL DEL USUARIO: "${sanitizeUserInput(userText)}"
     
     Tus objetivos son:
     1. Detectar si el usuario quiere ARMAR/PERSONALIZAR un poke (CHAT).
@@ -190,7 +208,15 @@ export async function analyzeIntent(
         const text = result.response.text();
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         const cleanText = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(cleanText);
+        const parsed = JSON.parse(cleanText);
+
+        // Validate intent against whitelist
+        if (!VALID_INTENTS.includes(parsed.intent)) {
+            console.warn(`Gemini returned invalid intent: ${parsed.intent}. Defaulting to 'unknown'.`);
+            parsed.intent = 'unknown';
+        }
+
+        return parsed;
     } catch (e) {
         return { intent: 'unknown', entities: {} };
     }
@@ -274,7 +300,7 @@ export async function generateSalesResponse(
     ${cartDescription}
     ${customerContext}
     ${upsellHint}
-    MENSAJE DEL USUARIO: "${userText}"
+    MENSAJE DEL USUARIO: "${sanitizeUserInput(userText)}"
     
     REGLAS:
     1. RESPONDE DIRECTO como Poki. No ofrezcas "opciones de respuesta". No rompas personaje.

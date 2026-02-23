@@ -7,6 +7,26 @@ const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 // Modelo ligero para rapidez
 const model = genAI ? genAI.getGenerativeModel({ model: "gemini-1.5-flash" }) : null;
 
+// Sanitize user input to mitigate prompt injection
+const VALID_INTENTS = ['START_BUILDER', 'ADD_TO_CART', 'INFO', 'STATUS', 'OTHER', 'unknown'];
+
+function sanitizeUserInput(text: string): string {
+    // Truncate to prevent excessively long inputs
+    let sanitized = text.slice(0, 500);
+    // Strip common adversarial prompt injection patterns
+    sanitized = sanitized
+        .replace(/ignora\s+(todo|las|lo|el|la)/gi, '')
+        .replace(/ignore\s+(all|everything|above|previous)/gi, '')
+        .replace(/olvida\s+(todo|las|lo)/gi, '')
+        .replace(/forget\s+(all|everything)/gi, '')
+        .replace(/new\s+instructions?/gi, '')
+        .replace(/system\s*prompt/gi, '')
+        .replace(/act\s+as/gi, '')
+        .replace(/you\s+are\s+now/gi, '')
+        .trim();
+    return sanitized;
+}
+
 export async function interpretSelection(
     userText: string,
     availableOptions: ProductOption[]
@@ -27,7 +47,7 @@ export async function interpretSelection(
         OPCIONES VÁLIDAS (ID: Nombre):
         ${optionsList}
 
-        ENTRADA DEL USUARIO: "${userText}"
+        ENTRADA DEL USUARIO: "${sanitizeUserInput(userText)}"
 
         REGLAS DE ORO:
         1. SOLO puedes devolver IDs que estén en la lista de "OPCIONES VÁLIDAS".
@@ -81,7 +101,7 @@ export async function analyzeIntent(
     Eres un asistente de ventas experto para Yoko Poke. Analiza el ÚLTIMO mensaje del usuario teniendo en cuenta el historial.
 
     ${historyContext}
-    MENSAJE ACTUAL DEL USUARIO: "${userText}"
+    MENSAJE ACTUAL DEL USUARIO: "${sanitizeUserInput(userText)}"
     
     Tus objetivos son:
     1. Detectar si el usuario quiere armar un poke desde cero (START_BUILDER).
@@ -105,7 +125,15 @@ export async function analyzeIntent(
     try {
         const result = await model.generateContent(prompt);
         const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(text);
+        const parsed = JSON.parse(text);
+
+        // Validate intent against whitelist
+        if (!VALID_INTENTS.includes(parsed.intent)) {
+            console.warn(`Gemini returned invalid intent: ${parsed.intent}. Defaulting to 'unknown'.`);
+            parsed.intent = 'unknown';
+        }
+
+        return parsed;
     } catch (e) {
         console.error("Gemini Intent Error:", e);
         return { intent: 'unknown', entities: {} };

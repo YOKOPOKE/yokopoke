@@ -67,7 +67,12 @@ export async function sendWhatsAppMessage(
 
 // Admin Notification Helper
 export async function notifyAdminNewOrder(orderId: string, customerName: string, total: number) {
-    const ADMIN_PHONE = process.env.WHATSAPP_ADMIN_PHONE || '529631371902'; // Fallback or strict?
+    const ADMIN_PHONE = process.env.WHATSAPP_ADMIN_PHONE;
+
+    if (!ADMIN_PHONE) {
+        console.error('WHATSAPP_ADMIN_PHONE not configured');
+        return { success: false, error: 'Admin phone not configured' };
+    }
 
     // Template: new_order_alert (needs to be created in Meta dashboard)
     // Variables: {{1}} = Customer Name, {{2}} = Order ID, {{3}} = Total

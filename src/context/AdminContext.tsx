@@ -170,6 +170,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     };
 
     // 3. Global Subscription
+    const incomingOrderRef = useRef(incomingOrder);
+    incomingOrderRef.current = incomingOrder;
+
     useEffect(() => {
         const channel = supabase
             .channel('admin-global-orders')
@@ -182,20 +185,18 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
                 const updated = payload.new as Order;
-                // Detect late payment confirmation (Stripe webhook)
                 if (updated.status === 'pending' && payload.old.status === 'awaiting_payment') {
                     setIncomingOrder(updated);
                     showToast(`💸 Pago confirmado: ${updated.customer_name}`, 'success');
                 }
-                // Auto-dismiss if handled elsewhere by status change (e.g. approved)
-                if (updated.status !== 'pending' && incomingOrder?.id === updated.id) {
+                if (updated.status !== 'pending' && incomingOrderRef.current?.id === updated.id) {
                     setIncomingOrder(null);
                 }
             })
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [incomingOrder]);
+    }, []); // Empty deps — subscribe once, use ref for current state
 
     return (
         <AdminContext.Provider value={{ incomingOrder, setIncomingOrder, stopAudio, testAudio, audioAllowed, unlockAudio }}>

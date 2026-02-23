@@ -45,3 +45,14 @@ next-env.d.ts
 /_legacy_backup
 /scripts
 clean-pide-ya/
+
+# dev/debug utilities (should not be in production)
+credentials_explained.txt
+debug_*.js
+fix_env.*
+read_env*
+test_webhook*
+check_db_names.js
+run_orders_migration.js
+update_emojis_node.js
+

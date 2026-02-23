@@ -8,6 +8,9 @@ export async function updateBusinessHours(open: number, close: number) {
 
     try {
         // Validate inputs
+        if (!Number.isInteger(open) || !Number.isInteger(close)) {
+            return { success: false, error: "Las horas deben ser números enteros." };
+        }
         if (open < 0 || open > 23 || close < 0 || close > 23) {
             return { success: false, error: "Horas inválidas (0-23)." };
         }
@@ -22,10 +25,9 @@ export async function updateBusinessHours(open: number, close: number) {
 
         if (error) {
             console.error("Error updating business hours:", error);
-            return { success: false, error: error.message };
+            return { success: false, error: "Error al actualizar horario." };
         }
 
-        // Revalidate cache to update frontend immediately
         revalidatePath('/');
         revalidatePath('/admin');
 
