@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendWhatsAppText } from '@/lib/whatsapp';
 import { createClient } from '@supabase/supabase-js';
+
+const WHATSAPP_API_URL = 'https://graph.facebook.com/v21.0';
 
 export async function POST(req: NextRequest) {
     try {
-        // Use service role for server-side operations
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
         const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        const waToken = process.env.WHATSAPP_ACCESS_TOKEN;
+        const waPhoneId = process.env.WHATSAPP_PHONE_ID;
 
         const { action, phone, message } = await req.json();
 
@@ -15,12 +18,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Phone required' }, { status: 400 });
         }
 
-        // Format phone
-        const cleanPhone = phone.replace(/[^0-9]/g, '');
-        const formattedPhone = cleanPhone.startsWith('521') ? cleanPhone
-            : cleanPhone.startsWith('52') ? `521${cleanPhone.slice(2)}`
-                : cleanPhone.length === 10 ? `521${cleanPhone}`
-                    : cleanPhone;
+        // Use the phone exactly as stored in the session (don't re-format)
+        const sessionPhone = phone.replace(/[^0-9]/g, '');
 
         switch (action) {
             case 'send_message': {
@@ -28,13 +27,40 @@ export async function POST(req: NextRequest) {
                     return NextResponse.json({ error: 'Message required' }, { status: 400 });
                 }
 
-                const result = await sendWhatsAppText(formattedPhone, message);
+                if (!waToken || !waPhoneId) {
+                    return NextResponse.json({ error: 'WhatsApp credentials not configured on server', configured: false }, { status: 500 });
+                }
 
-                // Also save to session history so it appears in CRM
+                // Send WhatsApp message directly
+                const waResponse = await fetch(`${WHATSAPP_API_URL}/${waPhoneId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${waToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messaging_product: 'whatsapp',
+                        to: sessionPhone,
+                        type: 'text',
+                        text: { body: message, preview_url: false }
+                    }),
+                });
+
+                const waData = await waResponse.json();
+
+                if (!waResponse.ok) {
+                    console.error('WhatsApp API Error:', waData);
+                    return NextResponse.json({
+                        error: waData?.error?.message || 'WhatsApp API error',
+                        details: waData
+                    }, { status: 400 });
+                }
+
+                // Save to session history
                 const { data: sessionData } = await supabase
                     .from('whatsapp_sessions')
                     .select('state')
-                    .eq('phone', formattedPhone)
+                    .eq('phone', sessionPhone)
                     .single();
 
                 if (sessionData?.state) {
@@ -49,28 +75,28 @@ export async function POST(req: NextRequest) {
                     await supabase
                         .from('whatsapp_sessions')
                         .update({ state, updated_at: new Date().toISOString() })
-                        .eq('phone', formattedPhone);
+                        .eq('phone', sessionPhone);
                 }
 
-                return NextResponse.json({ success: result.success });
+                return NextResponse.json({ success: true, messageId: waData?.messages?.[0]?.id });
             }
 
             case 'pause_bot': {
                 const { data: sessionData } = await supabase
                     .from('whatsapp_sessions')
                     .select('state')
-                    .eq('phone', formattedPhone)
+                    .eq('phone', sessionPhone)
                     .single();
 
                 if (sessionData?.state) {
                     const state = sessionData.state;
                     state.mode = 'PAUSED';
-                    state.pausedUntil = Date.now() + (60 * 60 * 1000); // 1 hour
+                    state.pausedUntil = Date.now() + (60 * 60 * 1000);
 
                     await supabase
                         .from('whatsapp_sessions')
                         .update({ state, updated_at: new Date().toISOString() })
-                        .eq('phone', formattedPhone);
+                        .eq('phone', sessionPhone);
                 }
 
                 return NextResponse.json({ success: true });
@@ -80,7 +106,7 @@ export async function POST(req: NextRequest) {
                 const { data: sessionData } = await supabase
                     .from('whatsapp_sessions')
                     .select('state')
-                    .eq('phone', formattedPhone)
+                    .eq('phone', sessionPhone)
                     .single();
 
                 if (sessionData?.state) {
@@ -91,7 +117,7 @@ export async function POST(req: NextRequest) {
                     await supabase
                         .from('whatsapp_sessions')
                         .update({ state, updated_at: new Date().toISOString() })
-                        .eq('phone', formattedPhone);
+                        .eq('phone', sessionPhone);
                 }
 
                 return NextResponse.json({ success: true });

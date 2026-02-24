@@ -151,14 +151,14 @@ export default function CRMPage() {
             });
             const data = await res.json();
             if (data.success) {
-                showToast('✅ Mensaje enviado', 'success');
+                showToast('✅ Mensaje enviado por WhatsApp', 'success');
                 await fetchData();
             } else {
-                showToast('❌ Error al enviar', 'error');
+                showToast(`❌ ${data.error || 'Error al enviar'}`, 'error');
                 setMessageInput(msg);
             }
         } catch {
-            showToast('❌ Error de conexión', 'error');
+            showToast('❌ Error de conexión al servidor', 'error');
             setMessageInput(msg);
         }
         setSending(false);
@@ -386,10 +386,10 @@ export default function CRMPage() {
                                         <div key={idx} className={`flex ${isUser ? 'justify-start' : 'justify-end'} mb-[1px]`}>
                                             <div
                                                 className={`relative max-w-[85%] md:max-w-[60%] px-[9px] pt-[6px] pb-[7px] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] ${isUser
-                                                        ? 'bg-white rounded-lg rounded-tl-none'
-                                                        : isCRM
-                                                            ? 'bg-violet-100 rounded-lg rounded-tr-none'
-                                                            : 'bg-[#d9fdd3] rounded-lg rounded-tr-none'
+                                                    ? 'bg-white rounded-lg rounded-tl-none'
+                                                    : isCRM
+                                                        ? 'bg-violet-100 rounded-lg rounded-tr-none'
+                                                        : 'bg-[#d9fdd3] rounded-lg rounded-tr-none'
                                                     }`}
                                             >
                                                 {/* CRM label */}
@@ -449,8 +449,8 @@ export default function CRMPage() {
                                     onClick={handleSendMessage}
                                     disabled={!messageInput.trim() || sending}
                                     className={`w-[44px] h-[44px] rounded-full flex items-center justify-center transition-all flex-shrink-0 ${messageInput.trim() && !sending
-                                            ? 'bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200'
-                                            : 'bg-slate-300'
+                                        ? 'bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200'
+                                        : 'bg-slate-300'
                                         }`}
                                 >
                                     <Send size={18} className="text-white ml-0.5" />
