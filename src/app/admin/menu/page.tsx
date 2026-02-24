@@ -748,6 +748,16 @@ export default function AdminMenuPage() {
                                                     )}
                                                 </div>
                                             </div>
+                                            <div className="space-y-2 col-span-1 sm:col-span-2">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Descripción del Producto</label>
+                                                <textarea
+                                                    value={selectedProduct.description || ''}
+                                                    onChange={e => setSelectedProduct({ ...selectedProduct, description: e.target.value })}
+                                                    rows={3}
+                                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-medium text-slate-700 focus:outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all resize-none text-sm"
+                                                    placeholder="Describe el producto para tus clientes... (ej: Bowl fresco de salmón con arroz sushi, aguacate y edamame)"
+                                                />
+                                            </div>
                                         </div>
 
                                         <div className="pt-4 flex items-center gap-4">
