@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Coffee, Settings, LogOut, Menu as MenuIcon, X, Store } from 'lucide-react';
+import { LayoutDashboard, Coffee, Settings, LogOut, Menu as MenuIcon, X, Store, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import ToastContainer from '@/components/ui/Toast';
@@ -58,7 +58,8 @@ function AdminLayoutContent({ children, pathname, isMobileNavOpen, setIsMobileNa
     const navItems = [
         { name: 'Menú & Productos', path: '/admin/menu', icon: <Coffee size={20} /> },
         { name: 'Pedidos', path: '/admin/orders', icon: <LayoutDashboard size={20} /> },
-        { name: 'Reglas de Armado', path: '/admin/builder', icon: <Settings size={20} /> }, // Changed from settings to builder, or add new
+        { name: 'CRM', path: '/admin/crm', icon: <MessageSquare size={20} /> },
+        { name: 'Reglas de Armado', path: '/admin/builder', icon: <Settings size={20} /> },
     ];
 
     return (
