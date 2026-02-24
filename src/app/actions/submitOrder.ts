@@ -61,5 +61,61 @@ export async function submitOrder(formData: OrderFormData, items: OrderItem[], t
         return { success: false, error: "Error al crear el pedido. Intenta de nuevo." };
     }
 
+    // --- TELEGRAM CRM NOTIFICATION ---
+    try {
+        const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+        const tgChatId = process.env.TELEGRAM_CHAT_ID;
+        if (tgToken && tgChatId) {
+            const phone = formData.phone.trim();
+            const itemsText = items
+                .map((i: any) => `  • ${i.quantity || 1}x ${i.name || 'Producto'} ($${i.price || 0})`)
+                .join('\n');
+
+            const timeStr = new Date().toLocaleString("es-MX", {
+                timeZone: "America/Mexico_City",
+                hour: "2-digit", minute: "2-digit", hour12: true,
+            });
+
+            const message =
+                `🆕 <b>PEDIDO WEB</b> 🌐\n` +
+                `━━━━━━━━━━━━━━━━\n` +
+                `👤 <b>${formData.name.trim()}</b>\n` +
+                `📱 ${phone}\n` +
+                `🕒 ${timeStr}\n\n` +
+                `📋 <b>ITEMS:</b>\n${itemsText}\n\n` +
+                `${formData.address ? `📍 ${formData.address}\n` : ''}` +
+                `💰 <b>TOTAL: $${serverTotal}</b>\n` +
+                `📊 Estado: ⏳ Pendiente\n` +
+                `━━━━━━━━━━━━━━━━`;
+
+            const keyboard = {
+                inline_keyboard: [
+                    [
+                        { text: "✅ Aceptar", callback_data: `order:confirmed:${phone}` },
+                        { text: "🍳 Preparando", callback_data: `order:preparing:${phone}` },
+                    ],
+                    [
+                        { text: "🚗 En Camino", callback_data: `order:on_the_way:${phone}` },
+                        { text: "✔️ Entregado", callback_data: `order:completed:${phone}` },
+                    ],
+                    [{ text: "❌ Cancelar", callback_data: `order:cancelled:${phone}` }],
+                ],
+            };
+
+            await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    chat_id: tgChatId,
+                    text: message,
+                    parse_mode: "HTML",
+                    reply_markup: JSON.stringify(keyboard),
+                }),
+            });
+        }
+    } catch (tgError) {
+        console.error("Non-fatal Telegram notification error:", tgError);
+    }
+
     return { success: true, orderId: order.id };
 }

@@ -456,6 +456,24 @@ export async function handleCheckoutFlow(
             console.error("Non-fatal error saving history:", histError);
         }
 
+        // --- TELEGRAM CRM NOTIFICATION ---
+        try {
+            const { notifyTelegramNewOrder } = await import('./telegramService.ts');
+            await notifyTelegramNewOrder({
+                customer_name: checkout.customerName || 'Sin nombre',
+                phone: from,
+                total: checkout.totalPrice,
+                status: orderData.status,
+                items: items,
+                delivery_method: checkout.deliveryMethod || 'pickup',
+                pickup_time: checkout.pickupTime || '',
+                address: checkout.fullAddress || checkout.address || '',
+                address_references: checkout.addressReferences || '',
+            }, session.cart);
+        } catch (tgError) {
+            console.error("Non-fatal Telegram notification error:", tgError);
+        }
+
         // --- CONFIRMATION MESSAGE ---
         if (isPreOrder) {
             const openTimeStr = `${open > 12 ? open - 12 : open}:00 ${open >= 12 ? 'PM' : 'AM'}`;

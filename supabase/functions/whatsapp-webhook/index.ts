@@ -899,6 +899,12 @@ export async function processMessage(from: string, text: string): Promise<void> 
             // Only send if checkout didn't already send the message directly
             if (response.text) {
                 await sendWhatsApp(from, response);
+                // 📨 Log to Telegram CRM
+                try {
+                    const { logConversationToTelegram } = await import('./telegramService.ts');
+                    const custName = session.checkoutState?.customerName || undefined;
+                    await logConversationToTelegram(from, custName, aggregatedText, response.text);
+                } catch (_) { /* non-critical */ }
             }
             // Save conversation history for checkout
             if (!sessionCleared) {
@@ -1376,6 +1382,19 @@ export async function processMessage(from: string, text: string): Promise<void> 
         // Keep only last 5 exchanges (10 messages)
         if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
         session.lastInteraction = now;
+
+        // 📨 Log AI/sales response to Telegram CRM
+        try {
+            // Get the last bot response that was just added to history
+            const histLen = session.conversationHistory.length;
+            const lastBotEntry = histLen >= 2 ? session.conversationHistory[histLen - 1] : null;
+            const botText = (lastBotEntry?.role === 'bot') ? lastBotEntry.text : '';
+            if (botText) {
+                const { logConversationToTelegram } = await import('./telegramService.ts');
+                const custName = session.checkoutState?.customerName || undefined;
+                await logConversationToTelegram(from, custName, aggregatedText, botText);
+            }
+        } catch (_) { /* non-critical */ }
 
         // RELEASE LOCK
         session.isProcessing = false;
@@ -2065,6 +2084,36 @@ async function notifyPreOrders(supabase: any) {
 // unless it's a verification request.
 
 Deno.serve(async (req: Request) => {
+    // --- TELEGRAM CRM WEBHOOK: RECEIVE BUTTON PRESSES & COMMANDS ---
+    {
+        const url = new URL(req.url);
+        if (url.searchParams.get('action') === 'telegram_webhook' && req.method === 'POST') {
+            try {
+                const update = await req.json();
+                const { handleTelegramCallback, handleTelegramCommand } = await import('./telegramService.ts');
+
+                // Create Supabase client for DB operations
+                const { createClient } = await import("npm:@supabase/supabase-js@2");
+                const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+                // Route: Callback Query (inline button press)
+                if (update.callback_query) {
+                    return await handleTelegramCallback(update, supabaseClient);
+                }
+
+                // Route: Message (commands like /pendientes)
+                if (update.message?.text) {
+                    return await handleTelegramCommand(update, supabaseClient);
+                }
+
+                return new Response("OK", { status: 200 });
+            } catch (e) {
+                console.error("Telegram Webhook Error:", e);
+                return new Response("OK", { status: 200 });
+            }
+        }
+    }
+
     // --- WEB ORDER BRIDGE: RECEIVE ORDER FROM WEBSITE ---
     {
         const url = new URL(req.url);
