@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendWhatsAppText } from '@/lib/whatsapp';
-import { createClient } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(req: NextRequest) {
     try {
-        const supabase = createClient();
-
-        // Verify auth
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        // Use service role for server-side operations
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         const { action, phone, message } = await req.json();
 
