@@ -199,8 +199,8 @@ export default function ProductSelector({ onSelect }: ProductSelectorProps) {
                                             >
                                                 {emoji}
                                             </motion.span>
-                                            <h3 className="text-3xl font-black text-slate-800 mb-2 text-center leading-tight">{product.name}</h3>
-                                            <p className="text-slate-500 font-medium mb-6 text-center">{product.description || 'Base de arroz + Proteína + Toppings ilimitados'}</p>
+                                            <h3 className="text-2xl md:text-3xl font-black text-slate-800 mb-2 text-center leading-tight">{product.name}</h3>
+                                            <p className="text-sm md:text-base text-slate-500 font-medium mb-6 text-center line-clamp-3 px-2">{product.description || 'Base de arroz + Proteína + Toppings ilimitados'}</p>
 
                                             {!product.is_active && (
                                                 <div className="mb-4 px-3 py-1 bg-slate-100 text-slate-500 text-xs font-bold uppercase rounded-full">
