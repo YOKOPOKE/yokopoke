@@ -1737,14 +1737,7 @@ export async function sendWhatsApp(to: string, response: BotResponse) {
     } else {
         await sendWhatsAppText(to, response.text);
     }
-
-    // Auto-log EVERY outgoing message to session history for CRM
-    // Include button labels so CRM shows what options the bot offered
-    let logText = response.text;
-    if (response.useButtons && response.buttons && response.buttons.length > 0) {
-        logText += '\n\n' + response.buttons.map((b: string) => `▸ ${b}`).join('\n');
-    }
-    await logBotMessageToHistory(to, logText);
+    // Logging is now handled by each low-level send function
 }
 
 // Automatically save bot messages to session history so CRM sees everything
@@ -1908,6 +1901,8 @@ async function sendWhatsAppText(to: string, message: string) {
     } catch (e) {
         console.error("Failed to send text message after retries:", e);
     }
+    // Log to CRM
+    await logBotMessageToHistory(to, message);
 }
 
 async function sendWhatsAppButtons(to: string, message: string, buttons: string[]) {
@@ -1943,6 +1938,9 @@ async function sendWhatsAppButtons(to: string, message: string, buttons: string[
     } catch (e) {
         console.error("Failed to send button message after retries:", e);
     }
+    // Log to CRM with button labels
+    const logText = message + '\n\n' + buttons.map((b: string) => `▸ ${b}`).join('\n');
+    await logBotMessageToHistory(to, logText);
 }
 
 /**
@@ -1991,10 +1989,13 @@ async function sendListMessage(to: string, list: ListMessage) {
             throw new Error('List message send failed');
         }
 
+        // Log list to CRM with items
+        const items = list.sections.flatMap(s => s.rows.map(r => `▸ ${r.title}`)).join('\n');
+        await logBotMessageToHistory(to, `${list.header}\n${list.body}\n\n${items}`);
+
         return true;
     } catch (error) {
         console.error('sendListMessage error:', error);
-        // Fallback to text
         return false;
     }
 }
@@ -2073,6 +2074,8 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string) 
     } catch (e) {
         console.error("Failed to send image after retries", e);
     }
+    // Log to CRM
+    if (caption) await logBotMessageToHistory(to, `📷 ${caption}`);
 }
 
 // --- AUTOMATION: CRON JOBS ---
