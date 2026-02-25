@@ -1721,7 +1721,11 @@ export async function sendWhatsApp(to: string, response: BotResponse) {
     // Support list messages natively
     if (response.useList && response.listData) {
         const success = await sendListMessage(to, response.listData);
-        if (success) return;
+        if (success) {
+            // Log list message to CRM history
+            await logBotMessageToHistory(to, response.listData.body || '[Lista enviada]');
+            return;
+        }
         // Fallback to text if list fails
     }
     if (response.location) {
@@ -1732,6 +1736,43 @@ export async function sendWhatsApp(to: string, response: BotResponse) {
         await sendWhatsAppButtons(to, response.text, response.buttons);
     } else {
         await sendWhatsAppText(to, response.text);
+    }
+
+    // Auto-log EVERY outgoing message to session history for CRM
+    await logBotMessageToHistory(to, response.text);
+}
+
+// Automatically save bot messages to session history so CRM sees everything
+async function logBotMessageToHistory(phone: string, text: string) {
+    try {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const { data } = await supabase
+            .from('whatsapp_sessions')
+            .select('state')
+            .eq('phone', phone)
+            .single();
+
+        if (data?.state) {
+            const state = data.state;
+            if (!state.conversationHistory) state.conversationHistory = [];
+
+            // Avoid duplicate: check if last message is the same bot text
+            const last = state.conversationHistory[state.conversationHistory.length - 1];
+            if (last?.role === 'bot' && last?.text === text) return;
+
+            state.conversationHistory.push({ role: 'bot', text, timestamp: Date.now() });
+            if (state.conversationHistory.length > 50) {
+                state.conversationHistory = state.conversationHistory.slice(-50);
+            }
+
+            await supabase
+                .from('whatsapp_sessions')
+                .update({ state, updated_at: new Date().toISOString() })
+                .eq('phone', phone);
+        }
+    } catch (e) {
+        // Never let logging break the main flow
+        console.error('CRM log error:', e);
     }
 }
 
