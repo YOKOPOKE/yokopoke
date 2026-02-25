@@ -619,6 +619,11 @@ export async function processMessage(from: string, text: string): Promise<void> 
     // 3. Silence Check
     if (session.mode === 'PAUSED') {
         console.log(`🤐 Ignored message from ${from} (Bot Paused)`);
+        // Still save to history so CRM can see the message
+        if (!session.conversationHistory) session.conversationHistory = [];
+        session.conversationHistory.push({ role: 'user', text: text, timestamp: now });
+        if (session.conversationHistory.length > 20) session.conversationHistory = session.conversationHistory.slice(-20);
+        await updateSession(from, session);
         return;
     }
     // --- RATE LIMITING (God Level Safety) ---
@@ -658,11 +663,17 @@ export async function processMessage(from: string, text: string): Promise<void> 
         if (!isOpen) {
             console.log(`🔒 Restaurant closed (${currentHour}:00, Open: ${open}-${close}) for ${from}`);
 
+            // Save to history so CRM can see the message
+            if (!session.conversationHistory) session.conversationHistory = [];
+            session.conversationHistory.push({ role: 'user', text: text, timestamp: now });
+
             const openTimeStr = `${open > 12 ? open - 12 : open}:00 ${open >= 12 ? 'PM' : 'AM'}`;
-            // NEW FRIENDLY CLOSED MESSAGE (Platform Focused)
-            await sendWhatsApp(from, {
-                text: `👋 ¡Hola! Estamos cerrados en este momento 🌙.\n\nPuedes *adelantar tu pedido* para las *${openTimeStr}* directamente en nuestra Web App: 👇\n\n📲 *https://yokopoke.mx*\n\n¡Es más rápido y sin esperas! 🍣✨\n\n¡Nos vemos pronto! 👋`
-            });
+            const closedMsg = `👋 ¡Hola! Estamos cerrados en este momento 🌙.\n\nPuedes *adelantar tu pedido* para las *${openTimeStr}* directamente en nuestra Web App: 👇\n\n📲 *https://yokopoke.mx*\n\n¡Es más rápido y sin esperas! 🍣✨\n\n¡Nos vemos pronto! 👋`;
+            session.conversationHistory.push({ role: 'bot', text: closedMsg, timestamp: now });
+            if (session.conversationHistory.length > 20) session.conversationHistory = session.conversationHistory.slice(-20);
+            await updateSession(from, session);
+
+            await sendWhatsApp(from, { text: closedMsg });
             return;
         }
     } catch (e) {
