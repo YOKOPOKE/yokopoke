@@ -150,8 +150,8 @@ export default function CRMPage() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchData())
             .subscribe();
 
-        // Fast polling as backup (every 5 seconds)
-        const interval = setInterval(fetchData, 5000);
+        // Ultra-fast polling (every 2 seconds) for true real-time feel
+        const interval = setInterval(fetchData, 2000);
 
         return () => {
             supabase.removeChannel(ch1);
