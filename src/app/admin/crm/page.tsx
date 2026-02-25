@@ -65,7 +65,11 @@ export default function CRMPage() {
     const [showActions, setShowActions] = useState(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const selectedPhoneRef = useRef<string | null>(null);
     const { showToast } = useToast();
+
+    // Keep ref in sync for subscription callbacks
+    useEffect(() => { selectedPhoneRef.current = selectedChat?.phone || null; }, [selectedChat]);
 
     const fetchData = async () => {
         const { data: sessionsData } = await supabase
@@ -96,7 +100,6 @@ export default function CRMPage() {
                         o.phone?.includes(phone10) || o.customer_phone?.includes(phone10)
                     );
 
-                    // Count "unread" = messages from user after last bot message
                     let unread = 0;
                     for (let i = history.length - 1; i >= 0; i--) {
                         if (history[i].role === 'user') unread++;
@@ -117,31 +120,65 @@ export default function CRMPage() {
                 });
             setSessions(parsed);
 
-            if (selectedChat) {
-                const updated = parsed.find(s => s.phone === selectedChat.phone);
+            // Update selected chat if open
+            const currentPhone = selectedPhoneRef.current;
+            if (currentPhone) {
+                const updated = parsed.find(s => s.phone === currentPhone);
                 if (updated) setSelectedChat(updated);
             }
         }
         setLoading(false);
     };
 
+    // Subscriptions + polling
     useEffect(() => {
         fetchData();
-        const ch1 = supabase.channel('crm-s').on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_sessions' }, () => fetchData()).subscribe();
-        const ch2 = supabase.channel('crm-o').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchData()).subscribe();
-        const interval = setInterval(fetchData, 20000);
-        return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); clearInterval(interval); };
+
+        // Real-time subscription for ANY session change
+        const ch1 = supabase.channel('crm-realtime-sessions')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'whatsapp_sessions'
+            }, () => {
+                // Instant refresh on any session update (new message, mode change, etc)
+                fetchData();
+            })
+            .subscribe();
+
+        const ch2 = supabase.channel('crm-realtime-orders')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchData())
+            .subscribe();
+
+        // Fast polling as backup (every 5 seconds)
+        const interval = setInterval(fetchData, 5000);
+
+        return () => {
+            supabase.removeChannel(ch1);
+            supabase.removeChannel(ch2);
+            clearInterval(interval);
+        };
     }, []);
 
+    // Auto-scroll when messages change
     useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [selectedChat?.history?.length]);
+        setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }, [selectedChat?.messageCount, selectedChat?.history?.length]);
 
     const handleSendMessage = async () => {
         if (!messageInput.trim() || !selectedChat || sending) return;
         const msg = messageInput.trim();
         setMessageInput('');
         setSending(true);
+
+        // OPTIMISTIC UI: Show message immediately
+        const optimisticMsg = { role: 'bot', text: `[CRM] ${msg}`, timestamp: Date.now() };
+        setSelectedChat(prev => prev ? {
+            ...prev,
+            history: [...prev.history, optimisticMsg],
+            messageCount: prev.messageCount + 1,
+            lastMessage: msg.substring(0, 55)
+        } : null);
 
         try {
             const res = await fetch('/api/crm', {
@@ -151,15 +188,27 @@ export default function CRMPage() {
             });
             const data = await res.json();
             if (data.success) {
-                showToast('✅ Mensaje enviado por WhatsApp', 'success');
-                await fetchData();
+                showToast('✅ Enviado', 'success');
+                // Real data will come via subscription, but fetch to be safe
+                setTimeout(fetchData, 500);
             } else {
                 showToast(`❌ ${data.error || 'Error al enviar'}`, 'error');
                 setMessageInput(msg);
+                // Revert optimistic update
+                setSelectedChat(prev => prev ? {
+                    ...prev,
+                    history: prev.history.filter(m => m !== optimisticMsg),
+                    messageCount: prev.messageCount - 1
+                } : null);
             }
         } catch {
-            showToast('❌ Error de conexión al servidor', 'error');
+            showToast('❌ Error de conexión', 'error');
             setMessageInput(msg);
+            setSelectedChat(prev => prev ? {
+                ...prev,
+                history: prev.history.filter(m => m !== optimisticMsg),
+                messageCount: prev.messageCount - 1
+            } : null);
         }
         setSending(false);
         inputRef.current?.focus();

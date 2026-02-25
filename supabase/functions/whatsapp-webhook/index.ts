@@ -1828,7 +1828,7 @@ async function sendWhatsAppText(to: string, message: string) {
         return;
     }
     try {
-        await fetchWithRetry(
+        const resp = await fetchWithRetry(
             `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_ID}/messages`,
             {
                 method: "POST",
@@ -1844,6 +1844,10 @@ async function sendWhatsAppText(to: string, message: string) {
                 }),
             }
         );
+        if (!resp.ok) {
+            const errBody = await resp.text();
+            console.error(`❌ WhatsApp API Error (${resp.status}):`, errBody);
+        }
     } catch (e) {
         console.error("Failed to send text message after retries:", e);
     }
