@@ -1739,7 +1739,12 @@ export async function sendWhatsApp(to: string, response: BotResponse) {
     }
 
     // Auto-log EVERY outgoing message to session history for CRM
-    await logBotMessageToHistory(to, response.text);
+    // Include button labels so CRM shows what options the bot offered
+    let logText = response.text;
+    if (response.useButtons && response.buttons && response.buttons.length > 0) {
+        logText += '\n\n' + response.buttons.map((b: string) => `▸ ${b}`).join('\n');
+    }
+    await logBotMessageToHistory(to, logText);
 }
 
 // Automatically save bot messages to session history so CRM sees everything

@@ -335,8 +335,8 @@ export default function CRMPage() {
                         <>
                             {/* Header */}
                             <div className="bg-slate-100 px-3 py-[10px] flex items-center gap-3 border-b border-slate-200">
-                                <button onClick={() => setSelectedChat(null)} className="md:hidden p-1">
-                                    <ChevronLeft size={22} className="text-slate-600" />
+                                <button onClick={() => setSelectedChat(null)} className="md:hidden p-2 -ml-1 bg-slate-200 rounded-full active:bg-slate-300">
+                                    <ChevronLeft size={24} className="text-slate-700" />
                                 </button>
                                 <div className="relative">
                                     <div className="w-10 h-10 bg-gradient-to-br from-slate-300 to-slate-400 rounded-full flex items-center justify-center font-bold text-white text-sm">
