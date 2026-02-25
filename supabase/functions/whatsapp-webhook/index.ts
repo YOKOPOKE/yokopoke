@@ -771,7 +771,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
         if (!session.conversationHistory) session.conversationHistory = [];
         session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
         if (instantResponse.text) session.conversationHistory.push({ role: 'bot', text: instantResponse.text, timestamp: now });
-        if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+        if (session.conversationHistory.length > 50) session.conversationHistory = session.conversationHistory.slice(-50);
         session.lastInteraction = now;
         session.isProcessing = false;
         session.activeThreadId = undefined;
@@ -922,7 +922,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 if (!session.conversationHistory) session.conversationHistory = [];
                 session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
                 if (response.text) session.conversationHistory.push({ role: 'bot', text: response.text, timestamp: now });
-                if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+                if (session.conversationHistory.length > 50) session.conversationHistory = session.conversationHistory.slice(-50);
             }
         }
 
@@ -1005,7 +1005,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                         // Save conversation history
                         if (!session.conversationHistory) session.conversationHistory = [];
                         session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
-                        if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+                        if (session.conversationHistory.length > 50) session.conversationHistory = session.conversationHistory.slice(-50);
                         // Release lock
                         session.isProcessing = false;
                         session.activeThreadId = undefined;
@@ -1125,7 +1125,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                         // Save conversation history
                         if (!session.conversationHistory) session.conversationHistory = [];
                         session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
-                        if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+                        if (session.conversationHistory.length > 50) session.conversationHistory = session.conversationHistory.slice(-50);
                         // Release lock
                         session.isProcessing = false;
                         session.activeThreadId = undefined;
@@ -1160,7 +1160,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 // Save conversation history
                 if (!session.conversationHistory) session.conversationHistory = [];
                 session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
-                if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+                if (session.conversationHistory.length > 50) session.conversationHistory = session.conversationHistory.slice(-50);
                 // Release lock
                 session.isProcessing = false;
                 session.activeThreadId = undefined;
@@ -1391,7 +1391,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
         if (!session.conversationHistory) session.conversationHistory = [];
         session.conversationHistory.push({ role: 'user', text: aggregatedText, timestamp: now });
         // Keep only last 5 exchanges (10 messages)
-        if (session.conversationHistory.length > 10) session.conversationHistory = session.conversationHistory.slice(-10);
+        if (session.conversationHistory.length > 50) session.conversationHistory = session.conversationHistory.slice(-50);
         session.lastInteraction = now;
 
         // 📨 Log AI/sales response to Telegram CRM
