@@ -76,31 +76,12 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
         return null;
     }
 
-    // Personalized Greeting (Premium UX)
-    try {
-        const { getOrderHistory } = await import('./orderHistoryService.ts');
-        const history = await getOrderHistory(context.from, 5);
-
-        // #7 FIX: Skip expensive Gemini call for new users with no history
-        if (history.length === 0) {
-            return {
-                text: "Bienvenido a *Yoko Poke* Tu asistente virtual 🍣\n\nPara una experiencia más rápida y visual, ordena directamente desde nuestra Web app:\n\n👉 *yokopoke.mx*\n\nTambién puedo ayudarte por aquí. ¿En qué te puedo servir?"
-            };
-        }
-
-        const { generatePersonalizedGreeting } = await import('./gemini.ts');
-        const greeting = await generatePersonalizedGreeting(context.from, history as any);
-
-        return {
-            text: greeting + "\n\n🌐 https://yokopoke.mx"
-        };
-    } catch (e) {
-        console.error("Error generating personalized greeting:", e);
-        // Fallback Greeting
-        return {
-            text: "Bienvenido a *Yoko Poké* 🍣\n\nPara una experiencia más rápida y visual, ordena directamente desde nuestra app:\n\n👉 *yokopoke.mx*\n\nTambién puedo ayudarte por aquí. ¿En qué te puedo servir?"
-        };
-    }
+    // Standard welcome for all users
+    return {
+        text: "Bienvenido a *Yoko Poké* 🍣 Tu asistente virtual\n\nPara una experiencia más rápida y visual, ordena desde nuestra app:\n\n👉 *yokopoke.mx*\n\nTambién puedo ayudarte por aquí. ¿En qué te puedo servir?",
+        useButtons: true,
+        buttons: ['Ver Menú', 'Armar un Poke']
+    };
 }
 
 /**
@@ -1320,9 +1301,9 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
                 await sendListMessage(from, {
                     header: "🥗 Menú Yoko Poke",
-                    body: "¿Qué se te antoja hoy? Selecciona una categoría:",
-                    footer: "Yoko Poke",
-                    buttonText: "Ver Categorías",
+                    body: "¡Hola! 👋 Explora nuestro menú y elige lo que más se te antoje 😋",
+                    footer: "yokopoke.mx",
+                    buttonText: "Ver Categorías 📜",
                     sections: [{
                         title: "Nuestro Menú",
                         rows: rows.slice(0, 10)
