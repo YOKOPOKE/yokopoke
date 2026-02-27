@@ -760,10 +760,8 @@ export async function processMessage(from: string, text: string): Promise<void> 
         console.log(`⚡ Fast Pass: Keyword Match for ${from}`);
         await sendWhatsApp(from, instantResponse);
 
-        // Reset Strategies if needed (e.g. for Armar Poke)
+        // Armar Poke is now handled entirely inside handleInstantKeywords
         if (aggregatedLower.includes('armar') && aggregatedLower.includes('poke')) {
-            await clearSession(from);
-            // Must return immediately — if we continue, we'll overwrite the cleared session
             return;
         }
 
@@ -787,19 +785,46 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
         // 1. BUILDER MODE — DESACTIVADO: El builder solo funciona en la web (yokopoke.mx)
         // Si alguien llega aquí, se redirige al menú.
+        // POKE_BUILDER: User selected a size and is now sending ingredients
+        if (session.mode === 'POKE_BUILDER' && session.pokeBuilder) {
+            console.log(`🥗 Poke Builder: ingredients received from ${from}`);
+            const ingredients = aggregatedText;
+            const size = session.pokeBuilder.size;
+            const price = session.pokeBuilder.price;
+            const productId = session.pokeBuilder.productId;
+
+            // Build the poke item for cart
+            if (!session.checkoutState) session.checkoutState = {};
+            if (!session.checkoutState.cart) session.checkoutState.cart = [];
+
+            session.checkoutState.cart.push({
+                id: productId,
+                name: `POKE ${size.toUpperCase()}`,
+                price: price,
+                quantity: 1,
+                customizations: ingredients
+            });
+
+            session.mode = 'NORMAL';
+            session.pokeBuilder = undefined;
+            session.isProcessing = false;
+            session.activeThreadId = undefined;
+            await updateSession(from, session);
+
+            const cartTotal = session.checkoutState.cart.reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
+            await sendWhatsApp(from, {
+                text: `✅ *Poke ${size} agregado a tu carrito*\n\n📝 *Ingredientes:* ${ingredients}\n💰 *Precio:* $${price}\n\n🛒 *Total del carrito: $${cartTotal}*\n\n¿Deseas algo más o procedemos al checkout?`,
+                useButtons: true,
+                buttons: ['Pagar 💳', 'Ver Menú', 'Agregar otro Poke']
+            });
+            return;
+        }
+
         if (session.mode === 'BUILDER' && session.builderState) {
-            console.log(`🏗 Builder Mode detectado en WhatsApp — redirigiendo a web`);
-            await clearSession(from);
             session.mode = 'NORMAL';
             session.builderState = undefined;
             session.isProcessing = false;
             sessionCleared = true;
-            await sendWhatsApp(from, {
-                text: "🥗 Para armar tu Poke, usa nuestro constructor interactivo en la web:\n\n👉 https://yokopoke.mx/#product-selector\n\n¡Es más fácil y puedes ver fotos de todo! 📸",
-                useButtons: true,
-                buttons: ['Ver Menú']
-            });
-            return;
         }
 
         // 2. UPSELL MODE (Postres by Geranio)
@@ -947,14 +972,48 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
             // --- CATEGORY SELECTION HANDLER (cat_ID) + armar_poke ---
             if (text === 'armar_poke') {
-                // Interceptar selección de "Armar un Poke" del menú genérico → redirigir a web
                 session.isProcessing = false;
                 session.activeThreadId = undefined;
                 await updateSession(from, session);
+                // Send size selection list
+                await sendListMessage(from, {
+                    header: '🥗 Arma tu Poke',
+                    body: 'Elige el tamaño de tu Poke Bowl:',
+                    buttonText: 'Ver Tamaños',
+                    sections: [{
+                        title: 'Tamaños',
+                        rows: [
+                            { id: 'poke_chico', title: '🥗 Chico — $140', description: '1 base, 1 proteína, 2 toppings, 1 crunch, 1 salsa' },
+                            { id: 'poke_mediano', title: '🥗 Mediano — $165', description: '1½ base, 2 proteínas, 3 toppings, 2 crunchies, 2 salsas' },
+                            { id: 'poke_grande', title: '🥗 Grande — $190', description: '2 bases, 3 proteínas, 4 toppings, 2 crunchies, 2 salsas' }
+                        ]
+                    }]
+                });
+                return;
+            }
+
+            // --- POKE SIZE SELECTION HANDLER ---
+            if (text === 'poke_chico' || text === 'poke_mediano' || text === 'poke_grande') {
+                const sizeMap: Record<string, { size: string; price: number; productId: number }> = {
+                    poke_chico: { size: 'Chico', price: 140, productId: 47 },
+                    poke_mediano: { size: 'Mediano', price: 165, productId: 44 },
+                    poke_grande: { size: 'Grande', price: 190, productId: 39 }
+                };
+                const selected = sizeMap[text];
+
+                // Set POKE_BUILDER mode
+                session.mode = 'POKE_BUILDER';
+                session.pokeBuilder = { size: selected.size, price: selected.price, productId: selected.productId };
+                session.isProcessing = false;
+                session.activeThreadId = undefined;
+                await updateSession(from, session);
+
+                // Send the menu image
+                await sendWhatsAppImage(from, 'https://yokopoke.mx/arma-tu-poke.jpg', `🥗 Poke ${selected.size} — $${selected.price}`);
+
+                // Follow-up message
                 await sendWhatsApp(from, {
-                    text: "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nPara elegir cada ingrediente a tu gusto, entra aquí:\n\n👉 https://yokopoke.mx/#product-selector\n\n¡Es súper fácil y rápido! 🚀",
-                    useButtons: true,
-                    buttons: ['Ver Menú de la Casa']
+                    text: `Perfecto, *Poke ${selected.size}* 👌\n\nRevisa la imagen y mándame *todo junto* lo que quieres:\n\n🍚 Base\n🥩 Proteína(s)\n🥑 Toppings\n🥜 Crunch\n🫗 Salsa(s)\n\n_Ejemplo: Arroz blanco, atún fresco, aguacate, mango, won ton, ponzu_`
                 });
                 return;
             }
@@ -1431,16 +1490,22 @@ export async function processMessage(from: string, text: string): Promise<void> 
 async function handleInstantKeywords(from: string, text: string, session: any): Promise<BotResponse | null> {
     const lowerText = text.toLowerCase();
 
-    // ⚡ PRIORITY 1: FLOW TRIGGER (Armar Poke) - REDIRECT TO WEB
+    // ⚡ PRIORITY 1: FLOW TRIGGER (Armar Poke) - Send Size List
     if (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke'))) {
-        console.log("🌊 Triggering Web Redirect for Armar Poke");
+        console.log("🥗 Triggering Poke Builder Size Selection");
 
-        // CHANGE: Use plain text + link to encourage WebView (Internal Browser) instead of Chrome
-        // CTA URL buttons often force external browser.
-        await sendWhatsApp(from, {
-            text: "🥗 *¡Armar tu Poke es toda una experiencia!* ✨\n\nElige cada ingrediente a tu gusto y arma tu combinación perfecta en nuestro *Constructor Interactivo*.\n\n👇 *Entra aquí:*\nhttps://yokopoke.mx/?phone=" + from + "&source=whatsapp#product-selector",
-            useButtons: true,
-            buttons: ['Ver Menú']
+        await sendListMessage(from, {
+            header: '🥗 Arma tu Poke',
+            body: 'Elige el tamaño de tu Poke Bowl:',
+            buttonText: 'Ver Tamaños',
+            sections: [{
+                title: 'Tamaños',
+                rows: [
+                    { id: 'poke_chico', title: '🥗 Chico — $140', description: '1 base, 1 proteína, 2 toppings, 1 crunch, 1 salsa' },
+                    { id: 'poke_mediano', title: '🥗 Mediano — $165', description: '1½ base, 2 proteínas, 3 toppings, 2 crunchies, 2 salsas' },
+                    { id: 'poke_grande', title: '🥗 Grande — $190', description: '2 bases, 3 proteínas, 4 toppings, 2 crunchies, 2 salsas' }
+                ]
+            }]
         });
         return { text: "" }; // Handled
     }
