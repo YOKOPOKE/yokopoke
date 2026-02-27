@@ -715,8 +715,17 @@ export async function processMessage(from: string, text: string): Promise<void> 
     session.processingStart = Date.now();
     await updateSession(from, session);
 
-    // ⏳ DEBOUNCE: Wait 5s for rapid-fire messages to accumulate
-    await new Promise(r => setTimeout(r, 5000));
+    // ⏳ SMART DEBOUNCE: Wait for rapid-fire messages to accumulate
+    // Phase 1: Short wait (2s) to catch quick follow-ups
+    await new Promise(r => setTimeout(r, 2000));
+    // Phase 2: Check if more messages arrived — if so, wait a bit more
+    const midCheck = await getSession(from);
+    const midCount = midCheck.pendingMessages?.length || 0;
+    if (midCount > 1) {
+        // Multiple messages are coming in — wait 2s more to batch them
+        console.log(`⏳ Smart debounce: ${midCount} msgs so far, waiting 2s more...`);
+        await new Promise(r => setTimeout(r, 2000));
+    }
 
     // Re-read session to get ALL queued messages
     let workSession = await getSession(from);
@@ -1680,21 +1689,38 @@ export async function processMessage(from: string, text: string): Promise<void> 
             await updateSession(from, session);
         }
 
-        // 🔄 DRAIN LOOP: Check for messages that arrived during processing
+        // 🔄 RECURSIVE DRAIN: Process ALL pending messages (no setTimeout)
         try {
-            const freshSession = await getSession(from);
-            if (freshSession.pendingMessages && freshSession.pendingMessages.length > 0 && !freshSession.isProcessing) {
-                console.log(`📬 Drain: ${freshSession.pendingMessages.length} pending messages found for ${from}`);
-                // Pick the first pending message and re-process
-                const nextMsg = freshSession.pendingMessages[0];
-                // Don't recurse infinitely — use a simple re-entry
-                setTimeout(async () => {
-                    try {
-                        await processMessage(from, nextMsg.text);
-                    } catch (e) {
-                        console.error("Drain loop error:", e);
-                    }
-                }, 1000); // 1s delay to avoid race conditions
+            let drainAttempts = 0;
+            const MAX_DRAINS = 3; // Safety cap to prevent infinite loops
+            while (drainAttempts < MAX_DRAINS) {
+                const freshSession = await getSession(from);
+                if (!freshSession.pendingMessages || freshSession.pendingMessages.length === 0 || freshSession.isProcessing) break;
+                
+                console.log(`📬 Drain #${drainAttempts + 1}: ${freshSession.pendingMessages.length} pending messages for ${from}`);
+                
+                // Aggregate ALL pending messages into one
+                const pendingTexts = freshSession.pendingMessages.map((m: any) => m.text).filter(Boolean);
+                if (pendingTexts.length === 0) break;
+                
+                const combinedText = pendingTexts.join('. ');
+                
+                // Clear the queue before processing
+                freshSession.pendingMessages = [];
+                freshSession.isProcessing = true;
+                freshSession.processingStart = Date.now();
+                await updateSession(from, freshSession);
+                
+                // Process inline (no setTimeout — reliable in serverless)
+                try {
+                    await processMessage(from, combinedText);
+                } catch (e) {
+                    console.error("Drain processing error:", e);
+                    // Release lock on error
+                    freshSession.isProcessing = false;
+                    await updateSession(from, freshSession);
+                }
+                drainAttempts++;
             }
         } catch (_) { /* non-critical */ }
     }
