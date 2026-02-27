@@ -28,31 +28,14 @@ export async function handleCheckoutFlow(
     if (checkout.checkoutStep === 'COLLECT_NAME') {
         // 👤 PRE-FILL: If we know the customer from history, offer to reuse name
         if (!checkout.customerName && session.customerProfile?.name) {
-            // First entry: show the pre-fill suggestion (only once)
-            if (!checkout.namePromptShown) {
-                checkout.namePromptShown = true;
-                return {
-                    text: `👤 ¿A nombre de *${session.customerProfile.name}* como siempre?`,
-                    useButtons: true,
-                    buttons: ['Sí', 'Otro nombre']
-                };
-            }
-            // User responded to the pre-fill prompt
-            if (lowerText === 'btn_0' || lowerText === 'sí' || lowerText === 'si' || lowerText === 'yes') {
-                // User confirmed the suggested name
-                checkout.customerName = session.customerProfile.name;
-                checkout.checkoutStep = 'COLLECT_DELIVERY';
-                return {
-                    text: `✅ Perfecto, *${checkout.customerName}*!\n\n📍 ¿Cómo lo quieres recibir?`,
-                    useButtons: true,
-                    buttons: ['🏪 Recoger en tienda', '🚗 Envío a domicilio']
-                };
-            }
-            if (lowerText === 'no' || lowerText === 'otro nombre' || lowerText === 'btn_1' || lowerText === 'otro') {
-                // User wants a different name — fall through to normal name collection
-            } else {
-                // User typed a different name directly — accept it
-            }
+            // Auto-fill name from profile — skip asking
+            checkout.customerName = session.customerProfile.name;
+            checkout.checkoutStep = 'COLLECT_DELIVERY';
+            return {
+                text: `✅ Perfecto, *${checkout.customerName}*!\n\n📍 ¿Cómo lo quieres recibir?`,
+                useButtons: true,
+                buttons: ['🏪 Recoger en tienda', '🚗 Envío a domicilio']
+            };
         }
 
         if (text.length < 2) {
