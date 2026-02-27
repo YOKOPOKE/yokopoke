@@ -792,9 +792,22 @@ export async function processMessage(from: string, text: string): Promise<void> 
             console.log(`🥗 Poke Builder: input from ${from}`);
             const ingredientsLower = aggregatedText.toLowerCase();
 
-            // Cancel detection
-            const cancelWords = ['cancelar', 'cancel', 'no', 'salir', 'menu', 'menú', 'volver', 'otro'];
-            if (cancelWords.some(w => ingredientsLower === w || ingredientsLower.includes('cancelar') || ingredientsLower.includes('no quiero'))) {
+            // Cancel detection — catch cancel words or intent to order something else
+            const isCanceling =
+                ingredientsLower.includes('cancelar') ||
+                ingredientsLower.includes('no quiero') ||
+                ingredientsLower.includes('ya no') ||
+                ingredientsLower === 'no' ||
+                ingredientsLower === 'salir' ||
+                ingredientsLower === 'cancelar' ||
+                ingredientsLower === 'menu' ||
+                ingredientsLower === 'menú' ||
+                ingredientsLower === 'volver' ||
+                ingredientsLower.includes('quiero otra') ||
+                ingredientsLower.includes('bebida') ||
+                ingredientsLower.includes('entrada') ||
+                ingredientsLower.includes('postre');
+            if (isCanceling) {
                 session.mode = 'NORMAL';
                 session.pokeBuilder = undefined;
                 session.isProcessing = false;
@@ -1555,7 +1568,8 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
     const lowerText = text.toLowerCase();
 
     // ⚡ PRIORITY 1: FLOW TRIGGER (Armar Poke) - Send Size List
-    if (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke'))) {
+    // Don't trigger if already in POKE_BUILDER mode
+    if (!(session && session.mode === 'POKE_BUILDER') && (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke')))) {
         console.log("🥗 Triggering Poke Builder Size Selection");
 
         await sendListMessage(from, {
@@ -1574,8 +1588,8 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
         return { text: "" }; // Handled
     }
 
-    // 0. If in Builder Mode OR Checkout (and NOT resetting), DISABLE other Fast Pass triggers
-    if (session && (session.mode === 'BUILDER' || session.mode === 'CHECKOUT')) return null;
+    // 0. If in Builder Mode, Checkout, or Poke Builder — DISABLE other Fast Pass triggers
+    if (session && (session.mode === 'BUILDER' || session.mode === 'CHECKOUT' || session.mode === 'POKE_BUILDER')) return null;
 
     // 1. Generic Poke Triggers (Menu Choice)
     // Supports: "armar clásico", "armar poke", "quiero armar un poke"
