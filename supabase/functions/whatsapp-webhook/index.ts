@@ -1077,7 +1077,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                     'Grande': '🍚 2 bases, 🥩 3 proteínas, 🥑 4 toppings, 🥜 2 crunch y 🫗 2 salsas'
                 };
                 await sendWhatsApp(from, {
-                    text: `✅ *Poke ${selected.size}* seleccionado\n\nTu tamaño incluye:\n${sizeInfo[selected.size]}\n\nEnvíame todo en un solo mensaje 👇\n🍚 Base + 🥩 Proteína + 🥑 Toppings + 🥜 Crunch + 🫗 Salsa\n\n_Ejemplo: Arroz blanco, atún fresco, aguacate, mango, won ton, ponzu_`
+                    text: `✅ *Poke ${selected.size}* seleccionado 🥗\n\nTu tamaño incluye:\n${sizeInfo[selected.size]}\n\nEnvíame todo en un solo mensaje 👇\n🍚 Base + 🥩 Proteína + 🥑 Toppings + 🥜 Crunch + 🫗 Salsa\n\n_Ejemplo: Arroz blanco, atún fresco, aguacate, mango, won ton, ponzu_`
                 });
                 return;
             }
