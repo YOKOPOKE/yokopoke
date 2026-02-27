@@ -854,7 +854,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
             const cartTotal = session.checkoutState.cart.reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
             await sendWhatsApp(from, {
-                text: `✅ *Poke ${size} agregado a tu carrito*\n\n📝 *Ingredientes:* ${ingredients}\n💰 *Precio:* $${price}\n\n🛒 *Total del carrito: $${cartTotal}*\n\n¿Deseas algo más o procedemos al checkout?`,
+                text: `✅ *Poke ${size} agregado a tu carrito*\n\n📝 *Ingredientes:* ${ingredients}\n💰 *Precio:* $${price}\n\n🛒 *Total del carrito: $${cartTotal}*\n\n¿Deseas algo más o deseas finalizar tu pedido?`,
                 useButtons: true,
                 buttons: ['Pagar 💳', 'Ver Menú', 'Agregar otro Poke']
             });
