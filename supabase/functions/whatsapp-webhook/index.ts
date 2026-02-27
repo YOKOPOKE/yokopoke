@@ -784,102 +784,134 @@ export async function processMessage(from: string, text: string): Promise<void> 
             console.log(`🥗 Poke Builder: input from ${from}`);
             const ingredientsLower = aggregatedText.toLowerCase();
 
-            // Cancel detection — catch cancel words or intent to order something else
+            // Cancel detection
             const isCanceling =
                 ingredientsLower.includes('cancelar') ||
                 ingredientsLower.includes('no quiero') ||
                 ingredientsLower.includes('ya no') ||
                 ingredientsLower === 'no' ||
                 ingredientsLower === 'salir' ||
-                ingredientsLower === 'cancelar' ||
                 ingredientsLower === 'menu' ||
                 ingredientsLower === 'menú' ||
-                ingredientsLower === 'volver' ||
-                ingredientsLower.includes('quiero otra') ||
-                ingredientsLower.includes('bebida') ||
-                ingredientsLower.includes('entrada') ||
-                ingredientsLower.includes('postre');
+                ingredientsLower === 'volver';
             if (isCanceling) {
                 session.mode = 'NORMAL';
                 session.pokeBuilder = undefined;
                 session.isProcessing = false;
                 await updateSession(from, session);
-                await sendWhatsApp(from, {
-                    text: '👌 Sin problema, pedido cancelado.\n\n¿En qué más te puedo ayudar?',
-                    useButtons: true,
-                    buttons: ['Ver Menú', 'Armar un Poke']
-                });
+                await sendWhatsApp(from, { text: '👌 Sin problema, pedido cancelado.\n\n¿En qué más te puedo ayudar?' });
                 return;
             }
 
-            const ingredients = aggregatedText;
             const size = session.pokeBuilder.size;
             const price = session.pokeBuilder.price;
-            const productId = session.pokeBuilder.productId;
 
-            // --- INGREDIENT CATEGORIZATION ---
-            const BASES = ['arroz blanco', 'arroz negro', 'pasta', 'mix de vegetales', 'vegetales'];
-            const PROTEINAS = ['atún', 'atun', 'spicy tuna', 'sweet salmon', 'salmon', 'salmón', 'camarones', 'camarón', 'pollo al grill', 'pollo grill', 'pollo teriyaki', 'teriyaki', 'arrachera', 'surimi'];
-            const TOPPINGS = ['pepino', 'aguacate', 'mango', 'zanahoria', 'elotes', 'elote', 'pimiento', 'pimientos', 'edamames', 'edamame', 'tomate cherry', 'tomate', 'queso philadelphia', 'philadelphia', 'alga wakame', 'wakame'];
-            const CRUNCH = ['cacahuate garapiñado', 'garapiñado', 'won ton', 'wonton', 'cacahuate enchilado', 'enchilado', 'betabel bacon', 'banana chips', 'almendra fileteada', 'almendra', 'cacahuate'];
-            const SALSAS = ['soya', 'siracha', 'sriracha', 'ponzu', 'mango habanero', 'habanero', 'mayo ajo', 'mayo cilantro', 'anguila', 'agridulce', 'mayo chipotle', 'chipotle', 'olive oil', 'aceite oliva', 'habanero drops', 'betabel spicy', 'cacahuate'];
-
-            // Size requirements
-            const reqs: Record<string, { base: number; prote: number; topping: number; crunch: number; salsa: number }> = {
-                'Chico': { base: 1, prote: 1, topping: 2, crunch: 1, salsa: 1 },
-                'Mediano': { base: 1, prote: 2, topping: 3, crunch: 2, salsa: 2 },
-                'Grande': { base: 2, prote: 3, topping: 4, crunch: 2, salsa: 2 }
-            };
-            const req = reqs[size] || reqs['Mediano'];
-
-            // Count what the user selected
-            const found = { base: 0, prote: 0, topping: 0, crunch: 0, salsa: 0 };
-            for (const b of BASES) { if (ingredientsLower.includes(b)) found.base++; }
-            for (const p of PROTEINAS) { if (ingredientsLower.includes(p)) found.prote++; }
-            for (const t of TOPPINGS) { if (ingredientsLower.includes(t)) found.topping++; }
-            for (const c of CRUNCH) { if (ingredientsLower.includes(c)) found.crunch++; }
-            for (const s of SALSAS) { if (ingredientsLower.includes(s)) found.salsa++; }
+            // 🤖 AI-powered ingredient parsing
+            const { parsePokeIngredients } = await import('./gemini.ts');
+            const parsed = await parsePokeIngredients(aggregatedText, size);
+            console.log(`🧠 AI Parsed:`, JSON.stringify(parsed));
 
             // Check for missing categories
             const missing: string[] = [];
-            if (found.base < 1) missing.push(`🍚 *Base* (ej: Arroz blanco, Arroz negro, Pasta)`);
-            if (found.prote < 1) missing.push(`🥩 *Proteína* (ej: Atún, Salmon, Camarones, Pollo)`);
-            if (found.topping < 1) missing.push(`🥑 *Toppings* (ej: Aguacate, Mango, Pepino, Edamames)`);
-            if (found.crunch < 1) missing.push(`🥜 *Crunch* (ej: Won Ton, Cacahuate, Almendra)`);
-            if (found.salsa < 1) missing.push(`🫗 *Salsa* (ej: Ponzu, Mayo cilantro, Siracha)`);
+            if (parsed.base.length < 1) missing.push(`🍚 *Base* (ej: Arroz blanco, Arroz negro, Pasta)`);
+            if (parsed.proteina.length < 1) missing.push(`🥩 *Proteína* (ej: Atún, Salmón, Camarones)`);
+            if (parsed.topping.length < 1) missing.push(`🥑 *Toppings* (ej: Aguacate, Mango, Pepino)`);
+            if (parsed.crunch.length < 1) missing.push(`🥜 *Crunch* (ej: Won ton, Cacahuate, Almendra)`);
+            if (parsed.salsa.length < 1) missing.push(`🫗 *Salsa* (ej: Ponzu, Mayo cilantro, Siracha)`);
 
             if (missing.length > 0) {
-                // Tell user what's missing — stay in POKE_BUILDER mode
                 await updateSession(from, session);
                 await sendWhatsApp(from, {
-                    text: `⚠️ Te falta elegir:\n\n${missing.join("\n")}\n\nMándame todo junto para completar tu *Poke ${size}* 🥗`
+                    text: `⚠️ Te falta elegir:\n\n${missing.join('\n')}\n\nMándame todo junto para completar tu *Poke ${size}* 🥗`
                 });
                 return;
             }
 
-            // All good — add to cart
-            if (!session.checkoutState) session.checkoutState = {};
-            if (!session.checkoutState.cart) session.checkoutState.cart = [];
+            // ✅ All categories present — show confirmation
+            const summary = [
+                `🍚 *Base:* ${parsed.base.join(', ')}`,
+                `🥩 *Proteína:* ${parsed.proteina.join(', ')}`,
+                `🥑 *Toppings:* ${parsed.topping.join(', ')}`,
+                `🥜 *Crunch:* ${parsed.crunch.join(', ')}`,
+                `🫗 *Salsa:* ${parsed.salsa.join(', ')}`
+            ].join('\n');
 
-            session.checkoutState.cart.push({
-                id: productId,
-                name: `POKE ${size.toUpperCase()}`,
-                price: price,
-                quantity: 1,
-                customizations: ingredients
-            });
-
-            session.mode = 'NORMAL';
-            session.pokeBuilder = undefined;
+            session.pokeBuilder.parsedIngredients = parsed;
+            session.pokeBuilder.ingredientsSummary = `${parsed.base.join(', ')}, ${parsed.proteina.join(', ')}, ${parsed.topping.join(', ')}, ${parsed.crunch.join(', ')}, ${parsed.salsa.join(', ')}`;
+            session.mode = 'POKE_CONFIRM';
             session.isProcessing = false;
-            session.activeThreadId = undefined;
             await updateSession(from, session);
 
-            const cartTotal = session.checkoutState.cart.reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
             await sendWhatsApp(from, {
-                text: `✅ *Poke ${size} agregado a tu carrito*\n\n📝 *Ingredientes:* ${ingredients}\n💰 *Precio:* $${price}\n\n🛒 *Total del carrito: $${cartTotal}*\n\n¿Deseas algo más o deseas finalizar tu pedido?`,
+                text: `🥗 *Tu Poke ${size} — $${price}*\n\n${summary}\n\n¿Todo correcto?`,
                 useButtons: true,
-                buttons: ['Pagar 💳', 'Ver Menú', 'Agregar otro Poke']
+                buttons: ['✅ Confirmar', '✏️ Cambiar', '❌ Cancelar']
+            });
+            return;
+        }
+
+        // POKE_CONFIRM: User confirms or changes their poke
+        if (session.mode === 'POKE_CONFIRM' && session.pokeBuilder) {
+            const lower = aggregatedText.toLowerCase();
+            const isConfirm = lower === 'btn_0' || lower.includes('confirmar') || lower === 'sí' || lower === 'si' || lower === 'ok' || lower === 'va' || lower === 'dale';
+            const isChange = lower === 'btn_1' || lower.includes('cambiar') || lower.includes('editar') || lower.includes('modificar');
+            const isCancel = lower === 'btn_2' || lower.includes('cancelar') || lower === 'no';
+
+            if (isCancel) {
+                session.mode = 'NORMAL';
+                session.pokeBuilder = undefined;
+                session.isProcessing = false;
+                await updateSession(from, session);
+                await sendWhatsApp(from, { text: '👌 Poke cancelado. ¿En qué más te ayudo?' });
+                return;
+            }
+
+            if (isChange) {
+                session.mode = 'POKE_BUILDER';
+                session.isProcessing = false;
+                await updateSession(from, session);
+                await sendWhatsApp(from, {
+                    text: `📝 Envíame de nuevo todos tus ingredientes para tu *Poke ${session.pokeBuilder.size}* 🥗`
+                });
+                return;
+            }
+
+            if (isConfirm) {
+                const { size, price, productId, ingredientsSummary } = session.pokeBuilder;
+
+                if (!session.checkoutState) session.checkoutState = {};
+                if (!session.checkoutState.cart) session.checkoutState.cart = [];
+
+                session.checkoutState.cart.push({
+                    id: productId,
+                    name: `POKE ${size.toUpperCase()}`,
+                    price: price,
+                    quantity: 1,
+                    customizations: ingredientsSummary || aggregatedText
+                });
+
+                session.mode = 'NORMAL';
+                session.pokeBuilder = undefined;
+                session.isProcessing = false;
+                session.activeThreadId = undefined;
+                await updateSession(from, session);
+
+                const cartTotal = session.checkoutState.cart.reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
+                await sendWhatsApp(from, {
+                    text: `✅ *Poke ${size} agregado* 🛒\n\n📝 ${ingredientsSummary}\n💰 $${price}\n\n🛒 *Total: $${cartTotal}*\n\n¿Deseas algo más o finalizar tu pedido?`,
+                    useButtons: true,
+                    buttons: ['Pagar 💳', 'Ver Menú', 'Agregar otro Poke']
+                });
+                return;
+            }
+
+            // Unrecognized — re-ask
+            session.isProcessing = false;
+            await updateSession(from, session);
+            await sendWhatsApp(from, {
+                text: '¿Confirmas tu Poke? 🥗',
+                useButtons: true,
+                buttons: ['✅ Confirmar', '✏️ Cambiar', '❌ Cancelar']
             });
             return;
         }
@@ -1595,9 +1627,38 @@ export async function processMessage(from: string, text: string): Promise<void> 
 async function handleInstantKeywords(from: string, text: string, session: any): Promise<BotResponse | null> {
     const lowerText = text.toLowerCase();
 
+    // ⚡ PRIORITY 0: Smart size detection — skip size list if user specifies size
+    // e.g. "quiero un poke mediano", "poke grande", "un chico"
+    if (!(session && (session.mode === 'POKE_BUILDER' || session.mode === 'POKE_CONFIRM'))) {
+        const sizeMap: Record<string, { size: string; price: number; productId: number; key: string }> = {
+            'chico': { size: 'Chico', price: 140, productId: 47, key: 'poke_chico' },
+            'mediano': { size: 'Mediano', price: 165, productId: 44, key: 'poke_mediano' },
+            'grande': { size: 'Grande', price: 190, productId: 39, key: 'poke_grande' }
+        };
+        for (const [sizeWord, sizeData] of Object.entries(sizeMap)) {
+            if (lowerText.includes(sizeWord) && (lowerText.includes('poke') || lowerText.includes('armar'))) {
+                console.log(`🥗 Smart size detect: ${sizeWord} from "${text}"`);
+                // Directly enter POKE_BUILDER with this size
+                if (session) {
+                    session.mode = 'POKE_BUILDER';
+                    session.pokeBuilder = { size: sizeData.size, price: sizeData.price, productId: sizeData.productId };
+                    session.isProcessing = false;
+                    session.activeThreadId = undefined;
+                    const { updateSession } = await import('./session.ts');
+                    await updateSession(from, session);
+                }
+                // Send instructions
+                await sendWhatsApp(from, {
+                    text: `🥗 *POKE ${sizeData.size.toUpperCase()}* — $${sizeData.price}\n\nElige tus ingredientes y mándamelos *todos en un solo mensaje*:\n\n🍚 *Base:* Arroz blanco, Arroz negro, Pasta o Mix de vegetales\n🥩 *Proteína:* Atún, Salmón, Camarones, Pollo, Arrachera o Surimi\n🥑 *Toppings:* Aguacate, Mango, Pepino, Edamame, Elote...\n🥜 *Crunch:* Won Ton, Cacahuate, Almendra, Banana chips...\n🫗 *Salsa:* Ponzu, Siracha, Mayo cilantro, Soya...\n\n_Ejemplo: Arroz blanco, atún, aguacate, mango, won ton, ponzu_\n\nEscribe *cancelar* para salir.`
+                });
+                return { text: '' };
+            }
+        }
+    }
+
     // ⚡ PRIORITY 1: FLOW TRIGGER (Armar Poke) - Send Size List
     // Don't trigger if already in POKE_BUILDER mode
-    if (!(session && session.mode === 'POKE_BUILDER') && (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke')))) {
+    if (!(session && (session.mode === 'POKE_BUILDER' || session.mode === 'POKE_CONFIRM')) && (lowerText.includes('armar clásico') || lowerText.includes('armar clasico') || (lowerText.includes('armar') && lowerText.includes('poke')))) {
         console.log("🥗 Triggering Poke Builder Size Selection");
 
         await sendListMessage(from, {
@@ -1616,8 +1677,8 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
         return { text: "" }; // Handled
     }
 
-    // 0. If in Builder Mode, Checkout, or Poke Builder — DISABLE other Fast Pass triggers
-    if (session && (session.mode === 'BUILDER' || session.mode === 'CHECKOUT' || session.mode === 'POKE_BUILDER')) return null;
+    // 0. If in Builder Mode, Checkout, Poke Builder, or Poke Confirm — DISABLE other Fast Pass triggers
+    if (session && (session.mode === 'BUILDER' || session.mode === 'CHECKOUT' || session.mode === 'POKE_BUILDER' || session.mode === 'POKE_CONFIRM')) return null;
 
     // 1. Generic Poke Triggers (Menu Choice)
     // Supports: "armar clásico", "armar poke", "quiero armar un poke"

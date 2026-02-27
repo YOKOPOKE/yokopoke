@@ -35,7 +35,7 @@ export interface CheckoutState {
 }
 
 export interface SessionData {
-    mode: 'NORMAL' | 'BUILDER' | 'CHECKOUT' | 'PAUSED' | 'UPSELL_DESSERT';
+    mode: 'NORMAL' | 'BUILDER' | 'CHECKOUT' | 'PAUSED' | 'UPSELL_DESSERT' | 'POKE_BUILDER' | 'POKE_CONFIRM';
     builderState?: BuilderState;
     checkoutState?: CheckoutState;
     lastInteraction: number;

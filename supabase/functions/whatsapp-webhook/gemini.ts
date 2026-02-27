@@ -439,3 +439,69 @@ REGLAS CRÍTICAS DE SALIDA:
         return "¡Hola! Bienvenido a Yoko Poke 🥗 ¿Qué te preparamos hoy?";
     }
 }
+
+/**
+ * Parse Poke Ingredients using AI — handles typos, slang, abbreviations
+ */
+export async function parsePokeIngredients(
+    userText: string,
+    size: string
+): Promise<{
+    base: string[],
+    proteina: string[],
+    topping: string[],
+    crunch: string[],
+    salsa: string[],
+    unrecognized: string[]
+}> {
+    const fallback = { base: [], proteina: [], topping: [], crunch: [], salsa: [], unrecognized: [] };
+    if (!primaryModel) return fallback;
+
+    const reqs: Record<string, string> = {
+        'Chico': '1 base, 1 proteína, 2 toppings, 1 crunch, 1 salsa',
+        'Mediano': '1 base, 2 proteínas, 3 toppings, 2 crunch, 2 salsas',
+        'Grande': '2 bases, 3 proteínas, 4 toppings, 2 crunch, 2 salsas'
+    };
+
+    const prompt = `
+Eres un parser de ingredientes para Yoko Poke Bowl. El cliente pidió un Poke ${size} (${reqs[size] || reqs['Mediano']}).
+
+INGREDIENTES DISPONIBLES:
+🍚 BASES: Arroz blanco, Arroz negro, Pasta, Mix de vegetales
+🥩 PROTEÍNAS: Atún, Spicy Tuna, Sweet Salmon, Salmón, Camarones, Pollo al grill, Pollo teriyaki, Arrachera, Surimi
+🥑 TOPPINGS: Pepino, Aguacate, Mango, Zanahoria, Elote, Pimiento, Edamame, Tomate cherry, Queso Philadelphia, Alga wakame
+🥜 CRUNCH: Cacahuate garapiñado, Won ton, Cacahuate enchilado, Betabel bacon, Banana chips, Almendra fileteada
+🫗 SALSAS: Soya, Siracha, Ponzu, Mango habanero, Mayo ajo, Mayo cilantro, Anguila, Agridulce, Mayo chipotle, Olive oil, Habanero drops, Betabel spicy, Cacahuate
+
+MENSAJE DEL CLIENTE: "${sanitizeUserInput(userText)}"
+
+REGLAS:
+1. Clasifica cada ingrediente mencionado en su categoría correcta.
+2. Usa FUZZY MATCHING: "arrz blnco"→"Arroz blanco", "aguacte"→"Aguacate", "wonton"→"Won ton", "sriracha"→"Siracha", "salmon"→"Salmón"
+3. Usa el NOMBRE OFICIAL del ingrediente (como aparece arriba).
+4. Si algo no es un ingrediente reconocible, ponlo en "unrecognized".
+5. Ignora texto no relacionado con ingredientes (saludos, confirmaciones, etc).
+
+RESPONDE SOLO JSON:
+{"base":["..."],"proteina":["..."],"topping":["..."],"crunch":["..."],"salsa":["..."],"unrecognized":["..."]}
+`;
+
+    try {
+        const result = await generateContentWithRetry(prompt, 1, true);
+        const text = result.response.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const cleanText = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleanText);
+        return {
+            base: Array.isArray(parsed.base) ? parsed.base : [],
+            proteina: Array.isArray(parsed.proteina) ? parsed.proteina : [],
+            topping: Array.isArray(parsed.topping) ? parsed.topping : [],
+            crunch: Array.isArray(parsed.crunch) ? parsed.crunch : [],
+            salsa: Array.isArray(parsed.salsa) ? parsed.salsa : [],
+            unrecognized: Array.isArray(parsed.unrecognized) ? parsed.unrecognized : []
+        };
+    } catch (e) {
+        console.error("parsePokeIngredients error:", e);
+        return fallback;
+    }
+}
