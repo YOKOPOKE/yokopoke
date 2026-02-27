@@ -1128,8 +1128,24 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
                         console.log(`📜 Sending List for Category: ${catName}, Rows: ${rows.length}`);
 
+                        // Emoji mapping
+                        const catEmojis: Record<string, string> = {
+                            'poke': '🥗', 'pokes': '🥗',
+                            'entrada': '🥟', 'entradas': '🥟',
+                            'bebida': '🥤', 'bebidas': '🥤',
+                            'postre': '🍰', 'postres': '🍰',
+                            'extra': '➕', 'extras': '➕',
+                            'salsa': '🫗', 'salsas': '🫗',
+                            'ensalada': '🥬', 'ensaladas': '🥬',
+                        };
+                        const lower = catName.toLowerCase();
+                        let catEmoji = '🍽️';
+                        for (const [key, emoji] of Object.entries(catEmojis)) {
+                            if (lower.includes(key)) { catEmoji = emoji; break; }
+                        }
+
                         await sendListMessage(from, {
-                            header: `📂 ${catName}`,
+                            header: `${catEmoji} ${catName}`,
                             body: `Aquí tienes nuestros ${catName}. ¿Cuál se te antoja?`,
                             footer: "Yoko Poke",
                             buttonText: "Ver Productos",
@@ -1272,13 +1288,32 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
                 // 2. Fallback: Generic Menu (Category List)
                 console.log("📂 Intent is MENU/CATEGORY -> Sending Category List");
+                // Emoji mapping for categories
+                const catEmojis: Record<string, string> = {
+                    'poke': '🥗', 'pokes': '🥗',
+                    'entrada': '🥟', 'entradas': '🥟',
+                    'bebida': '🥤', 'bebidas': '🥤',
+                    'postre': '🍰', 'postres': '🍰',
+                    'extra': '➕', 'extras': '➕',
+                    'salsa': '🫗', 'salsas': '🫗',
+                    'ensalada': '🥬', 'ensaladas': '🥬',
+                    'snack': '🍿', 'snacks': '🍿',
+                };
+                const getCatEmoji = (name: string) => {
+                    const lower = name.toLowerCase();
+                    for (const [key, emoji] of Object.entries(catEmojis)) {
+                        if (lower.includes(key)) return emoji;
+                    }
+                    return '🍽️';
+                };
+
                 const rows = [
                     { id: "armar_poke", title: "🥗 Armar un Poke", description: "Crea tu poke ideal" }
                 ];
                 cats.forEach(c => {
                     rows.push({
                         id: `cat_${c.id}`,
-                        title: `${c.name}`,
+                        title: `${getCatEmoji(c.name)} ${c.name}`,
                         description: c.description ? c.description.substring(0, 60) : "Ver productos"
                     });
                 });
