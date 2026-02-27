@@ -191,22 +191,21 @@ export async function handleCheckoutFlow(
     // Step 4: COLLECT_REFERENCES (delivery instructions)
     if (checkout.checkoutStep === 'COLLECT_REFERENCES') {
         checkout.addressReferences = text.trim();
-        checkout.checkoutStep = 'COLLECT_PICKUP_TIME'; // Reuse time slot for delivery ETA
+        checkout.pickupTime = 'Lo antes posible';
+        checkout.checkoutStep = 'SHOW_SUMMARY';
 
-        const slots = await generateTimeSlots();
+        const product = await getProductWithSteps(checkout.productSlug);
+        if (!product) return { text: "Error: Producto no encontrado." };
 
-        if (slots.length === 0) {
-            return {
-                text: "🌙 *¡Ups! Ya cerramos por hoy.* 🌙\n\nNuestras entregas son hasta las 10:00 PM.\nPor favor intenta de nuevo mañana. ☀️",
-                useButtons: true,
-                buttons: ['Ver Menú']
-            };
-        }
+        const { total, summary } = calculateCheckoutSummary(product, checkout.selections, checkout.totalPrice, session.cart || []);
+
+        const shortAddr = checkout.fullAddress ? checkout.fullAddress.substring(0, 30) + (checkout.fullAddress.length > 30 ? '...' : '') : 'Ubicación compartida';
+        const deliveryText = `🚗 Domicilio\n📍 ${shortAddr}`;
 
         return {
-            text: `✅ Referencias guardadas.\n\n🕒 ¿A qué hora te gustaría recibir tu pedido?\n\n${slots.map(s => `• ${s}`).join('\n')}\n\nSelecciona una hora 👇`,
+            text: `📋 *RESUMEN DE TU ORDEN*\n\n${summary}\n\n------------------\n👤 *Nombre:* ${checkout.customerName}\n${deliveryText}\n💰 *TOTAL: $${total}*\n------------------\n\n¿Todo correcto?`,
             useButtons: true,
-            buttons: slots.slice(0, 3)
+            buttons: ['✅ Sí, Confirmar', '❌ Cambiar algo']
         };
     }
 
@@ -299,11 +298,10 @@ export async function handleCheckoutFlow(
 
         let deliveryText = "";
         if (checkout.deliveryMethod === 'delivery') {
-            // Show start of address
             const shortAddr = checkout.fullAddress ? checkout.fullAddress.substring(0, 30) + (checkout.fullAddress.length > 30 ? '...' : '') : 'Ubicación compartida';
-            deliveryText = `🚗 Domicilio\n📍 ${shortAddr}\n🕒 Hora: ${checkout.pickupTime}`;
+            deliveryText = `🚗 Domicilio\n📍 ${shortAddr}`;
         } else {
-            deliveryText = `🏪 Recoger: ${checkout.pickupTime}`;
+            deliveryText = `🏪 Recoger en tienda`;
         }
 
         return {
