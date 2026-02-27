@@ -1068,16 +1068,16 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 await updateSession(from, session);
 
                 // Send the menu image
-                await sendWhatsAppImage(from, 'https://yokopoke.mx/arma-tu-poke.jpg', `Poke ${selected.size} — $${selected.price}`);
+                await sendWhatsAppImage(from, 'https://yokopoke.mx/arma-tu-poke.jpg', `🥗 Poke ${selected.size} — $${selected.price}\n\nElige tus ingredientes de cada categoría 👇`);
 
                 // Follow-up message with size-specific quantities
                 const sizeInfo: Record<string, string> = {
-                    'Chico': '1 base, 1 proteína, 2 toppings, 1 crunch y 1 salsa',
-                    'Mediano': '1 base, 2 proteínas, 3 toppings, 2 crunch y 2 salsas',
-                    'Grande': '2 bases, 3 proteínas, 4 toppings, 2 crunch y 2 salsas'
+                    'Chico': '🍚 1 base, 🥩 1 proteína, 🥑 2 toppings, 🥜 1 crunch y 🫗 1 salsa',
+                    'Mediano': '🍚 1 base, 🥩 2 proteínas, 🥑 3 toppings, 🥜 2 crunch y 🫗 2 salsas',
+                    'Grande': '🍚 2 bases, 🥩 3 proteínas, 🥑 4 toppings, 🥜 2 crunch y 🫗 2 salsas'
                 };
                 await sendWhatsApp(from, {
-                    text: `✅ *Poke ${selected.size}* seleccionado\n\nTu tamaño incluye: *${sizeInfo[selected.size]}*\n\nRevisa la imagen y envíame tus ingredientes en un solo mensaje 👇\n\n_Ejemplo: Arroz blanco, atún fresco, aguacate, mango, won ton, ponzu_`
+                    text: `✅ *Poke ${selected.size}* seleccionado\n\nTu tamaño incluye:\n${sizeInfo[selected.size]}\n\nEnvíame todo en un solo mensaje 👇\n🍚 Base + 🥩 Proteína + 🥑 Toppings + 🥜 Crunch + 🫗 Salsa\n\n_Ejemplo: Arroz blanco, atún fresco, aguacate, mango, won ton, ponzu_`
                 });
                 return;
             }
