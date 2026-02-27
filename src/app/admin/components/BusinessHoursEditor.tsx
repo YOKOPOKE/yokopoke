@@ -6,6 +6,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getBusinessHours } from '@/app/actions/getBusinessHours';
 import { updateBusinessHours } from '@/app/actions/updateBusinessHours';
 
+// Convert 24h to 12h format
+function to12h(hour: number): string {
+    if (hour === 0) return '12:00 AM';
+    if (hour === 12) return '12:00 PM';
+    if (hour > 12) return `${hour - 12}:00 PM`;
+    return `${hour}:00 AM`;
+}
+
+// Generate hour options for dropdown
+const hourOptions = Array.from({ length: 24 }, (_, i) => ({
+    value: i,
+    label: to12h(i)
+}));
+
 export default function BusinessHoursEditor() {
     const [hours, setHours] = useState({ open: 14, close: 22 });
     const [loading, setLoading] = useState(true);
@@ -80,8 +94,8 @@ export default function BusinessHoursEditor() {
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                         >
-                            <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
-                                {hours.open}:00 <span className="text-sm text-slate-400 font-bold">-</span> {hours.close}:00
+                            <div className="text-2xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
+                                {to12h(hours.open)} <span className="text-sm text-slate-400 font-bold">—</span> {to12h(hours.close)}
                             </div>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-1">Horario Operativo</p>
                         </motion.div>
@@ -93,21 +107,25 @@ export default function BusinessHoursEditor() {
                             exit={{ opacity: 0 }}
                             className="flex items-center gap-2"
                         >
-                            <input
-                                type="number"
-                                min="0" max="23"
+                            <select
                                 value={tempHours.open}
-                                onChange={e => setTempHours({ ...tempHours, open: Math.min(23, Math.max(0, Number(e.target.value))) })}
-                                className="w-16 p-2 bg-slate-50 border border-slate-200 rounded-lg text-lg font-bold text-center focus:ring-2 focus:ring-violet-200 outline-none"
-                            />
-                            <span className="font-bold text-slate-300">-</span>
-                            <input
-                                type="number"
-                                min="0" max="23"
+                                onChange={e => setTempHours({ ...tempHours, open: Number(e.target.value) })}
+                                className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-violet-200 outline-none"
+                            >
+                                {hourOptions.map(o => (
+                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                            </select>
+                            <span className="font-bold text-slate-300">—</span>
+                            <select
                                 value={tempHours.close}
-                                onChange={e => setTempHours({ ...tempHours, close: Math.min(23, Math.max(0, Number(e.target.value))) })}
-                                className="w-16 p-2 bg-slate-50 border border-slate-200 rounded-lg text-lg font-bold text-center focus:ring-2 focus:ring-violet-200 outline-none"
-                            />
+                                onChange={e => setTempHours({ ...tempHours, close: Number(e.target.value) })}
+                                className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-violet-200 outline-none"
+                            >
+                                {hourOptions.map(o => (
+                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                            </select>
                             <button
                                 onClick={handleSave}
                                 disabled={saving}

@@ -789,11 +789,52 @@ export async function processMessage(from: string, text: string): Promise<void> 
         if (session.mode === 'POKE_BUILDER' && session.pokeBuilder) {
             console.log(`🥗 Poke Builder: ingredients received from ${from}`);
             const ingredients = aggregatedText;
+            const ingredientsLower = ingredients.toLowerCase();
             const size = session.pokeBuilder.size;
             const price = session.pokeBuilder.price;
             const productId = session.pokeBuilder.productId;
 
-            // Build the poke item for cart
+            // --- INGREDIENT CATEGORIZATION ---
+            const BASES = ['arroz blanco', 'arroz negro', 'pasta', 'mix de vegetales', 'vegetales'];
+            const PROTEINAS = ['atún', 'atun', 'spicy tuna', 'sweet salmon', 'salmon', 'salmón', 'camarones', 'camarón', 'pollo al grill', 'pollo grill', 'pollo teriyaki', 'teriyaki', 'arrachera', 'surimi'];
+            const TOPPINGS = ['pepino', 'aguacate', 'mango', 'zanahoria', 'elotes', 'elote', 'pimiento', 'pimientos', 'edamames', 'edamame', 'tomate cherry', 'tomate', 'queso philadelphia', 'philadelphia', 'alga wakame', 'wakame'];
+            const CRUNCH = ['cacahuate garapiñado', 'garapiñado', 'won ton', 'wonton', 'cacahuate enchilado', 'enchilado', 'betabel bacon', 'banana chips', 'almendra fileteada', 'almendra', 'cacahuate'];
+            const SALSAS = ['soya', 'siracha', 'sriracha', 'ponzu', 'mango habanero', 'habanero', 'mayo ajo', 'mayo cilantro', 'anguila', 'agridulce', 'mayo chipotle', 'chipotle', 'olive oil', 'aceite oliva', 'habanero drops', 'betabel spicy', 'cacahuate'];
+
+            // Size requirements
+            const reqs: Record<string, { base: number; prote: number; topping: number; crunch: number; salsa: number }> = {
+                'Chico': { base: 1, prote: 1, topping: 2, crunch: 1, salsa: 1 },
+                'Mediano': { base: 1, prote: 2, topping: 3, crunch: 2, salsa: 2 },
+                'Grande': { base: 2, prote: 3, topping: 4, crunch: 2, salsa: 2 }
+            };
+            const req = reqs[size] || reqs['Mediano'];
+
+            // Count what the user selected
+            const found = { base: 0, prote: 0, topping: 0, crunch: 0, salsa: 0 };
+            for (const b of BASES) { if (ingredientsLower.includes(b)) found.base++; }
+            for (const p of PROTEINAS) { if (ingredientsLower.includes(p)) found.prote++; }
+            for (const t of TOPPINGS) { if (ingredientsLower.includes(t)) found.topping++; }
+            for (const c of CRUNCH) { if (ingredientsLower.includes(c)) found.crunch++; }
+            for (const s of SALSAS) { if (ingredientsLower.includes(s)) found.salsa++; }
+
+            // Check for missing categories
+            const missing: string[] = [];
+            if (found.base < 1) missing.push(`🍚 *Base* (ej: Arroz blanco, Arroz negro, Pasta)`);
+            if (found.prote < 1) missing.push(`🥩 *Proteína* (ej: Atún, Salmon, Camarones, Pollo)`);
+            if (found.topping < 1) missing.push(`🥑 *Toppings* (ej: Aguacate, Mango, Pepino, Edamames)`);
+            if (found.crunch < 1) missing.push(`🥜 *Crunch* (ej: Won Ton, Cacahuate, Almendra)`);
+            if (found.salsa < 1) missing.push(`🫗 *Salsa* (ej: Ponzu, Mayo cilantro, Siracha)`);
+
+            if (missing.length > 0) {
+                // Tell user what's missing — stay in POKE_BUILDER mode
+                await updateSession(from, session);
+                await sendWhatsApp(from, {
+                    text: `⚠️ Te falta elegir:\\n\\n${missing.join('\\n')}\\n\\nMándame todo junto para completar tu *Poke ${size}* 🥗`
+                });
+                return;
+            }
+
+            // All good — add to cart
             if (!session.checkoutState) session.checkoutState = {};
             if (!session.checkoutState.cart) session.checkoutState.cart = [];
 
