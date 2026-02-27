@@ -762,6 +762,8 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
         // Armar Poke is now handled entirely inside handleInstantKeywords
         if (aggregatedLower.includes('armar') && aggregatedLower.includes('poke')) {
+            session.isProcessing = false;
+            await updateSession(from, session);
             return;
         }
 
