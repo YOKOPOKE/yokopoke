@@ -84,7 +84,7 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
         // #7 FIX: Skip expensive Gemini call for new users with no history
         if (history.length === 0) {
             return {
-                text: "¡Hola! Soy *POKI* 🐼, tu asistente virtual.\n\nTe invito a ordenar en nuestra web *yokopoke.mx* 📲 ¡Es mucho más fácil, rápido y puedes ver fotos de todo! 📸\n\nO si prefieres, puedo tomar tu orden por aquí. ¿Qué se te antoja hoy? 🥢"
+                text: "Bienvenido a *Yoko Poké* 🍣\n\nPara una experiencia más rápida y visual, ordena directamente desde nuestra app:\n\n👉 *yokopoke.mx*\n\nTambién puedo ayudarte por aquí. ¿En qué te puedo servir?"
             };
         }
 
@@ -98,7 +98,7 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
         console.error("Error generating personalized greeting:", e);
         // Fallback Greeting
         return {
-            text: "¡Hola! Soy *POKI* 🐼, tu asistente virtual.\n\nTe invito a ordenar en nuestra web *yokopoke.mx* 📲 ¡Es mucho más fácil, rápido y puedes ver fotos de todo! 📸\n\nO si prefieres, puedo tomar tu orden por aquí. ¿Qué se te antoja hoy? 🥢"
+            text: "Bienvenido a *Yoko Poké* 🍣\n\nPara una experiencia más rápida y visual, ordena directamente desde nuestra app:\n\n👉 *yokopoke.mx*\n\nTambién puedo ayudarte por aquí. ¿En qué te puedo servir?"
         };
     }
 }
