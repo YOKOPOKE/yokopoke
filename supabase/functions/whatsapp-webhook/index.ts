@@ -781,6 +781,17 @@ export async function processMessage(from: string, text: string): Promise<void> 
         // Si alguien llega aquí, se redirige al menú.
         // POKE_BUILDER: User selected a size and is now sending ingredients
         if (session.mode === 'POKE_BUILDER' && session.pokeBuilder) {
+            // Stale session check — if inactive for 30+ min, reset
+            const pokeStarted = session.pokeBuilder.startedAt || 0;
+            if (pokeStarted > 0 && (now - pokeStarted) > 30 * 60 * 1000) {
+                console.log(`⏰ Poke Builder expired (${Math.round((now - pokeStarted)/60000)} min)`);
+                session.mode = 'NORMAL';
+                session.pokeBuilder = undefined;
+                session.isProcessing = false;
+                await updateSession(from, session);
+                await sendWhatsApp(from, { text: '⏰ Tu poke anterior expiró. ¿Quieres empezar de nuevo?' });
+                return;
+            }
             console.log(`🥗 Poke Builder: input from ${from}`);
             const ingredientsLower = aggregatedText.toLowerCase();
 
@@ -814,6 +825,11 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 console.log(`🧠 AI Parsed:`, JSON.stringify(parsed));
             } catch (e) {
                 console.warn(`⚠️ Gemini parsing failed, using keyword fallback:`, e);
+            }
+            // Keyword fallback: also triggers if AI returned nothing useful
+            const aiFoundNothing = parsed.base.length === 0 && parsed.proteina.length === 0 && parsed.topping.length === 0 && parsed.crunch.length === 0 && parsed.salsa.length === 0;
+            if (aiFoundNothing) {
+                console.log(`🔄 AI found nothing, running keyword fallback`);
                 // Keyword fallback
                 const lower = ingredientsLower;
                 const BASES = ['arroz blanco', 'arroz negro', 'pasta', 'mix de vegetales', 'vegetales'];
@@ -826,7 +842,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 for (const t of TOPPINGS) { if (lower.includes(t)) parsed.topping.push(t); }
                 for (const c of CRUNCH) { if (lower.includes(c)) parsed.crunch.push(c); }
                 for (const s of SALSAS) { if (lower.includes(s)) parsed.salsa.push(s); }
-            }
+            } // end keyword fallback
 
             // 📦 Accumulate with previous partial ingredients
             const prev = session.pokeBuilder.partialIngredients || { base: [], proteina: [], topping: [], crunch: [], salsa: [] };
@@ -894,9 +910,10 @@ export async function processMessage(from: string, text: string): Promise<void> 
         // POKE_CONFIRM: User confirms or changes their poke
         if (session.mode === 'POKE_CONFIRM' && session.pokeBuilder) {
             const lower = aggregatedText.toLowerCase();
-            const isConfirm = lower === 'btn_0' || lower.includes('confirmar') || lower === 'sí' || lower === 'si' || lower === 'ok' || lower === 'va' || lower === 'dale';
             const isChange = lower === 'btn_1' || lower.includes('cambiar') || lower.includes('editar') || lower.includes('modificar');
-            const isCancel = lower === 'btn_2' || lower.includes('cancelar') || lower === 'no';
+            const isCancel = lower === 'btn_2' || lower.includes('cancelar');
+            // isConfirm: only if NOT also changing/canceling (avoids "sí pero cambia X")
+            const isConfirm = !isChange && !isCancel && (lower === 'btn_0' || lower.includes('confirmar') || lower === 'sí' || lower === 'si' || lower === 'ok' || lower === 'va' || lower === 'dale');
 
             if (isCancel) {
                 session.mode = 'NORMAL';
@@ -909,6 +926,9 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
             if (isChange) {
                 session.mode = 'POKE_BUILDER';
+                session.pokeBuilder.partialIngredients = undefined; // Reset accumulated ingredients
+                session.pokeBuilder.parsedIngredients = undefined;
+                session.pokeBuilder.ingredientsSummary = undefined;
                 session.isProcessing = false;
                 await updateSession(from, session);
                 await sendWhatsApp(from, {
@@ -1140,7 +1160,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
                 // Set POKE_BUILDER mode
                 session.mode = 'POKE_BUILDER';
-                session.pokeBuilder = { size: selected.size, price: selected.price, productId: selected.productId };
+                session.pokeBuilder = { size: selected.size, price: selected.price, productId: selected.productId, startedAt: Date.now() };
                 session.isProcessing = false;
                 session.activeThreadId = undefined;
                 await updateSession(from, session);
@@ -1682,15 +1702,16 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
                 // Directly enter POKE_BUILDER with this size
                 if (session) {
                     session.mode = 'POKE_BUILDER';
-                    session.pokeBuilder = { size: sizeData.size, price: sizeData.price, productId: sizeData.productId };
+                    session.pokeBuilder = { size: sizeData.size, price: sizeData.price, productId: sizeData.productId, startedAt: Date.now() };
                     session.isProcessing = false;
                     session.activeThreadId = undefined;
                     const { updateSession } = await import('./session.ts');
                     await updateSession(from, session);
                 }
-                // Send instructions
+                // Send image + instructions
+                await sendWhatsAppImage(from, 'https://yokopoke.mx/arma-tu-poke.jpg', `🥗 *POKE ${sizeData.size.toUpperCase()}* — $${sizeData.price}`);
                 await sendWhatsApp(from, {
-                    text: `🥗 *POKE ${sizeData.size.toUpperCase()}* — $${sizeData.price}\n\nElige tus ingredientes y mándamelos *todos en un solo mensaje*:\n\n🍚 *Base:* Arroz blanco, Arroz negro, Pasta o Mix de vegetales\n🥩 *Proteína:* Atún, Salmón, Camarones, Pollo, Arrachera o Surimi\n🥑 *Toppings:* Aguacate, Mango, Pepino, Edamame, Elote...\n🥜 *Crunch:* Won Ton, Cacahuate, Almendra, Banana chips...\n🫗 *Salsa:* Ponzu, Siracha, Mayo cilantro, Soya...\n\n_Ejemplo: Arroz blanco, atún, aguacate, mango, won ton, ponzu_\n\nEscribe *cancelar* para salir.`
+                    text: `✅ *Poke ${sizeData.size}* seleccionado 🥗\n\nElige tus ingredientes de la imagen y mándamelos *todos en un solo mensaje*:\n\n🍚 *Base:* Arroz blanco, Arroz negro, Pasta o Mix de vegetales\n🥩 *Proteína:* Atún, Salmón, Camarones, Pollo, Arrachera o Surimi\n🥑 *Toppings:* Aguacate, Mango, Pepino, Edamame, Elote...\n🥜 *Crunch:* Won Ton, Cacahuate, Almendra, Banana chips...\n🫗 *Salsa:* Ponzu, Siracha, Mayo cilantro, Soya...\n\n_Ejemplo: Arroz blanco, atún, aguacate, mango, won ton, ponzu_\n\nEscribe *cancelar* para salir.`
                 });
                 return { text: '' };
             }
