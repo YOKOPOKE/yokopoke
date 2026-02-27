@@ -76,12 +76,27 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
         return null;
     }
 
-    // Standard welcome for all users
-    return {
-        text: "Bienvenido a *Yoko Poké* 🍣 Tu asistente virtual\n\nPara una experiencia más rápida y visual, ordena desde nuestra app:\n\n👉 *yokopoke.mx*\n\nTambién puedo ayudarte por aquí. ¿En qué te puedo servir?",
-        useButtons: true,
-        buttons: ['Ver Menú', 'Armar un Poke']
-    };
+    // AI Greeting for all users
+    try {
+        const { getOrderHistory } = await import('./orderHistoryService.ts');
+        const history = await getOrderHistory(context.from, 5);
+
+        const { generatePersonalizedGreeting } = await import('./gemini.ts');
+        const greeting = await generatePersonalizedGreeting(context.from, history as any);
+
+        return {
+            text: greeting,
+            useButtons: true,
+            buttons: ['Ver Menú', 'Armar un Poke']
+        };
+    } catch (e) {
+        console.error("Error generating greeting:", e);
+        return {
+            text: "¡Hola! 👋 Bienvenido a *Yoko Poké* 🍣\n\n¿En qué te puedo ayudar hoy?",
+            useButtons: true,
+            buttons: ['Ver Menú', 'Armar un Poke']
+        };
+    }
 }
 
 /**
