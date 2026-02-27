@@ -806,26 +806,67 @@ export async function processMessage(from: string, text: string): Promise<void> 
             const size = session.pokeBuilder.size;
             const price = session.pokeBuilder.price;
 
-            // 🤖 AI-powered ingredient parsing
-            const { parsePokeIngredients } = await import('./gemini.ts');
-            const parsed = await parsePokeIngredients(aggregatedText, size);
-            console.log(`🧠 AI Parsed:`, JSON.stringify(parsed));
+            // 🤖 AI-powered ingredient parsing with fallback
+            let parsed = { base: [] as string[], proteina: [] as string[], topping: [] as string[], crunch: [] as string[], salsa: [] as string[], unrecognized: [] as string[] };
+            try {
+                const { parsePokeIngredients } = await import('./gemini.ts');
+                parsed = await parsePokeIngredients(aggregatedText, size);
+                console.log(`🧠 AI Parsed:`, JSON.stringify(parsed));
+            } catch (e) {
+                console.warn(`⚠️ Gemini parsing failed, using keyword fallback:`, e);
+                // Keyword fallback
+                const lower = ingredientsLower;
+                const BASES = ['arroz blanco', 'arroz negro', 'pasta', 'mix de vegetales', 'vegetales'];
+                const PROTEINAS = ['atún', 'atun', 'spicy tuna', 'sweet salmon', 'salmon', 'salmón', 'camarones', 'camarón', 'pollo', 'teriyaki', 'arrachera', 'surimi'];
+                const TOPPINGS = ['pepino', 'aguacate', 'mango', 'zanahoria', 'elote', 'pimiento', 'edamame', 'edamames', 'tomate', 'philadelphia', 'wakame'];
+                const CRUNCH = ['garapiñado', 'won ton', 'wonton', 'enchilado', 'betabel bacon', 'banana chips', 'almendra', 'cacahuate'];
+                const SALSAS = ['soya', 'siracha', 'sriracha', 'ponzu', 'mango habanero', 'habanero', 'mayo ajo', 'mayo cilantro', 'anguila', 'agridulce', 'mayo chipotle', 'chipotle', 'olive oil', 'habanero drops', 'betabel spicy'];
+                for (const b of BASES) { if (lower.includes(b)) parsed.base.push(b); }
+                for (const p of PROTEINAS) { if (lower.includes(p)) parsed.proteina.push(p); }
+                for (const t of TOPPINGS) { if (lower.includes(t)) parsed.topping.push(t); }
+                for (const c of CRUNCH) { if (lower.includes(c)) parsed.crunch.push(c); }
+                for (const s of SALSAS) { if (lower.includes(s)) parsed.salsa.push(s); }
+            }
+
+            // 📦 Accumulate with previous partial ingredients
+            const prev = session.pokeBuilder.partialIngredients || { base: [], proteina: [], topping: [], crunch: [], salsa: [] };
+            const merged = {
+                base: [...new Set([...prev.base, ...parsed.base])],
+                proteina: [...new Set([...prev.proteina, ...parsed.proteina])],
+                topping: [...new Set([...prev.topping, ...parsed.topping])],
+                crunch: [...new Set([...prev.crunch, ...parsed.crunch])],
+                salsa: [...new Set([...prev.salsa, ...parsed.salsa])]
+            };
+            session.pokeBuilder.partialIngredients = merged;
+            console.log(`📦 Merged ingredients:`, JSON.stringify(merged));
 
             // Check for missing categories
             const missing: string[] = [];
-            if (parsed.base.length < 1) missing.push(`🍚 *Base* (ej: Arroz blanco, Arroz negro, Pasta)`);
-            if (parsed.proteina.length < 1) missing.push(`🥩 *Proteína* (ej: Atún, Salmón, Camarones)`);
-            if (parsed.topping.length < 1) missing.push(`🥑 *Toppings* (ej: Aguacate, Mango, Pepino)`);
-            if (parsed.crunch.length < 1) missing.push(`🥜 *Crunch* (ej: Won ton, Cacahuate, Almendra)`);
-            if (parsed.salsa.length < 1) missing.push(`🫗 *Salsa* (ej: Ponzu, Mayo cilantro, Siracha)`);
+            if (merged.base.length < 1) missing.push(`🍚 *Base* (ej: Arroz blanco, Arroz negro, Pasta)`);
+            if (merged.proteina.length < 1) missing.push(`�� *Proteína* (ej: Atún, Salmón, Camarones)`);
+            if (merged.topping.length < 1) missing.push(`🥑 *Toppings* (ej: Aguacate, Mango, Pepino)`);
+            if (merged.crunch.length < 1) missing.push(`🥜 *Crunch* (ej: Won ton, Cacahuate, Almendra)`);
+            if (merged.salsa.length < 1) missing.push(`🫗 *Salsa* (ej: Ponzu, Mayo cilantro, Siracha)`);
 
+            // Show what we have so far + what's missing
             if (missing.length > 0) {
+                const have: string[] = [];
+                if (merged.base.length > 0) have.push(`🍚 ${merged.base.join(', ')}`);
+                if (merged.proteina.length > 0) have.push(`🥩 ${merged.proteina.join(', ')}`);
+                if (merged.topping.length > 0) have.push(`🥑 ${merged.topping.join(', ')}`);
+                if (merged.crunch.length > 0) have.push(`🥜 ${merged.crunch.join(', ')}`);
+                if (merged.salsa.length > 0) have.push(`🫗 ${merged.salsa.join(', ')}`);
+                
+                const haveText = have.length > 0 ? `\n✅ *Llevas:*\n${have.join('\n')}\n` : '';
                 await updateSession(from, session);
                 await sendWhatsApp(from, {
-                    text: `⚠️ Te falta elegir:\n\n${missing.join('\n')}\n\nMándame todo junto para completar tu *Poke ${size}* 🥗`
+                    text: `${haveText}\n⚠️ *Te falta:*\n${missing.join('\n')}\n\nMándame lo que falta 👇`
                 });
                 return;
             }
+
+            // Use merged as final parsed
+            parsed = { ...merged, unrecognized: [] };
 
             // ✅ All categories present — show confirmation
             const summary = [
