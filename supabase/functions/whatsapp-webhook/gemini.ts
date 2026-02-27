@@ -27,7 +27,7 @@ function sanitizeUserInput(text: string): string {
 }
 
 // Bulletproof Gemini call — cascades through models, never hangs
-async function generateContentWithRetry(input: any, _retries = 1, _useFast = false): Promise<any> {
+export async function generateContentWithRetry(input: any, _retries = 1, _useFast = false): Promise<any> {
     const models = [primaryModel, fallbackModel].filter(Boolean);
     if (models.length === 0) throw new Error("No Gemini models initialized");
 

@@ -157,9 +157,45 @@ export async function handleCheckoutFlow(
 
     // Step 3: COLLECT_ADDRESS (for delivery after location)
     if (checkout.checkoutStep === 'COLLECT_ADDRESS') {
-        if (text.length < 10) {
+        if (text.length < 5) {
             return {
                 text: "⚠️ Por favor proporciona una dirección completa (calle, número, colonia)."
+            };
+        }
+
+        // 🤖 AI Address Validation
+        let isValid = true;
+        let aiSuggestion = '';
+        try {
+            const { generateContentWithRetry } = await import('./gemini.ts');
+            const prompt = `Eres un validador de direcciones para entregas en Comitán de Domínguez, Chiapas, México.
+
+TEXTO DEL USUARIO: "${text.trim()}"
+
+EVALÚA si esto parece una dirección válida para entrega a domicilio.
+Una dirección válida contiene al menos: calle/avenida + número o referencia + colonia/zona.
+Ejemplos válidos: "Calle 5 de Mayo #12, Centro", "Av. Belisario Domínguez 45, Col. Primavera", "Por el parque central, casa blanca #23"
+Ejemplos inválidos: "hola", "por ahí", "no sé", "123", "casa"
+
+RESPONDE SOLO JSON:
+{"valid": true/false, "suggestion": "Si no es válida, sugerencia de qué pedir. Si es válida, string vacío."}`;
+            const result = await generateContentWithRetry(prompt, 1, true);
+            const responseText = result.response.text();
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                isValid = parsed.valid === true;
+                aiSuggestion = parsed.suggestion || '';
+            }
+        } catch (e) {
+            console.warn("Address validation fallback (AI failed):", e);
+            // Fallback: just check length
+            isValid = text.trim().length >= 10;
+        }
+
+        if (!isValid) {
+            return {
+                text: `⚠️ No parece una dirección completa.\n\n${aiSuggestion || 'Por favor incluye calle, número y colonia.'}\n\n_Ejemplo: Calle 5 de Mayo #12, Col. Centro_`
             };
         }
 
