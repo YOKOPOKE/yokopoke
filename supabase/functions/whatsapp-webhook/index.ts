@@ -1019,14 +1019,14 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 // Send size selection list
                 await sendListMessage(from, {
                     header: '🥗 Arma tu Poke',
-                    body: 'Elige el tamaño de tu Poke Bowl:',
+                    body: 'Elige el tamaño de tu Poke Bowl. Cada tamaño incluye diferentes cantidades de ingredientes.',
                     buttonText: 'Ver Tamaños',
                     sections: [{
                         title: 'Tamaños',
                         rows: [
-                            { id: 'poke_chico', title: '🥗 Chico — $140', description: '1 base, 1 proteína, 2 toppings, 1 crunch, 1 salsa' },
-                            { id: 'poke_mediano', title: '🥗 Mediano — $165', description: '1½ base, 2 proteínas, 3 toppings, 2 crunchies, 2 salsas' },
-                            { id: 'poke_grande', title: '🥗 Grande — $190', description: '2 bases, 3 proteínas, 4 toppings, 2 crunchies, 2 salsas' }
+                            { id: 'poke_chico', title: '🥗 Chico — $140', description: '1 base, 1 prote, 2 toppings, 1 crunch, 1 salsa' },
+                            { id: 'poke_mediano', title: '🥗 Mediano — $165', description: '1 base, 2 protes, 3 toppings, 2 crunch, 2 salsas' },
+                            { id: 'poke_grande', title: '🥗 Grande — $190', description: '2 bases, 3 protes, 4 toppings, 2 crunch, 2 salsas' }
                         ]
                     }]
                 });
@@ -1050,11 +1050,16 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 await updateSession(from, session);
 
                 // Send the menu image
-                await sendWhatsAppImage(from, 'https://yokopoke.mx/arma-tu-poke.jpg', `🥗 Poke ${selected.size} — $${selected.price}`);
+                await sendWhatsAppImage(from, 'https://yokopoke.mx/arma-tu-poke.jpg', `Poke ${selected.size} — $${selected.price}`);
 
-                // Follow-up message
+                // Follow-up message with size-specific quantities
+                const sizeInfo: Record<string, string> = {
+                    'Chico': '1 base, 1 proteína, 2 toppings, 1 crunch y 1 salsa',
+                    'Mediano': '1 base, 2 proteínas, 3 toppings, 2 crunch y 2 salsas',
+                    'Grande': '2 bases, 3 proteínas, 4 toppings, 2 crunch y 2 salsas'
+                };
                 await sendWhatsApp(from, {
-                    text: `Perfecto, *Poke ${selected.size}* 👌\n\nRevisa la imagen y mándame *todo junto* lo que quieres:\n\n🍚 Base\n🥩 Proteína(s)\n🥑 Toppings\n🥜 Crunch\n🫗 Salsa(s)\n\n_Ejemplo: Arroz blanco, atún fresco, aguacate, mango, won ton, ponzu_`
+                    text: `✅ *Poke ${selected.size}* seleccionado\n\nTu tamaño incluye: *${sizeInfo[selected.size]}*\n\nRevisa la imagen y envíame tus ingredientes en un solo mensaje 👇\n\n_Ejemplo: Arroz blanco, atún fresco, aguacate, mango, won ton, ponzu_`
                 });
                 return;
             }
@@ -1537,14 +1542,14 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
 
         await sendListMessage(from, {
             header: '🥗 Arma tu Poke',
-            body: 'Elige el tamaño de tu Poke Bowl:',
+            body: 'Elige el tamaño de tu Poke Bowl. Cada tamaño incluye diferentes cantidades de ingredientes.',
             buttonText: 'Ver Tamaños',
             sections: [{
                 title: 'Tamaños',
                 rows: [
-                    { id: 'poke_chico', title: '🥗 Chico — $140', description: '1 base, 1 proteína, 2 toppings, 1 crunch, 1 salsa' },
-                    { id: 'poke_mediano', title: '🥗 Mediano — $165', description: '1½ base, 2 proteínas, 3 toppings, 2 crunchies, 2 salsas' },
-                    { id: 'poke_grande', title: '🥗 Grande — $190', description: '2 bases, 3 proteínas, 4 toppings, 2 crunchies, 2 salsas' }
+                    { id: 'poke_chico', title: '🥗 Chico — $140', description: '1 base, 1 prote, 2 toppings, 1 crunch, 1 salsa' },
+                    { id: 'poke_mediano', title: '🥗 Mediano — $165', description: '1 base, 2 protes, 3 toppings, 2 crunch, 2 salsas' },
+                    { id: 'poke_grande', title: '🥗 Grande — $190', description: '2 bases, 3 protes, 4 toppings, 2 crunch, 2 salsas' }
                 ]
             }]
         });
