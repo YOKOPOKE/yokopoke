@@ -84,7 +84,7 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
         // #7 FIX: Skip expensive Gemini call for new users with no history
         if (history.length === 0) {
             return {
-                text: "Bienvenido a *Yoko Poké* 🍣\n\nPara una experiencia más rápida y visual, ordena directamente desde nuestra app:\n\n👉 *yokopoke.mx*\n\nTambién puedo ayudarte por aquí. ¿En qué te puedo servir?"
+                text: "Bienvenido a *Yoko Poke* Tu asistente virtual 🍣\n\nPara una experiencia más rápida y visual, ordena directamente desde nuestra Web app:\n\n👉 *yokopoke.mx*\n\nTambién puedo ayudarte por aquí. ¿En qué te puedo servir?"
             };
         }
 
