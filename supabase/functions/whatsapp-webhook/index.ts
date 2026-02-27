@@ -787,9 +787,25 @@ export async function processMessage(from: string, text: string): Promise<void> 
         // Si alguien llega aquí, se redirige al menú.
         // POKE_BUILDER: User selected a size and is now sending ingredients
         if (session.mode === 'POKE_BUILDER' && session.pokeBuilder) {
-            console.log(`🥗 Poke Builder: ingredients received from ${from}`);
+            console.log(`🥗 Poke Builder: input from ${from}`);
+            const ingredientsLower = aggregatedText.toLowerCase();
+
+            // Cancel detection
+            const cancelWords = ['cancelar', 'cancel', 'no', 'salir', 'menu', 'menú', 'volver', 'otro'];
+            if (cancelWords.some(w => ingredientsLower === w || ingredientsLower.includes('cancelar') || ingredientsLower.includes('no quiero'))) {
+                session.mode = 'NORMAL';
+                session.pokeBuilder = undefined;
+                session.isProcessing = false;
+                await updateSession(from, session);
+                await sendWhatsApp(from, {
+                    text: '👌 Sin problema, pedido cancelado.\n\n¿En qué más te puedo ayudar?',
+                    useButtons: true,
+                    buttons: ['Ver Menú', 'Armar un Poke']
+                });
+                return;
+            }
+
             const ingredients = aggregatedText;
-            const ingredientsLower = ingredients.toLowerCase();
             const size = session.pokeBuilder.size;
             const price = session.pokeBuilder.price;
             const productId = session.pokeBuilder.productId;
@@ -829,7 +845,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 // Tell user what's missing — stay in POKE_BUILDER mode
                 await updateSession(from, session);
                 await sendWhatsApp(from, {
-                    text: `⚠️ Te falta elegir:\\n\\n${missing.join('\\n')}\\n\\nMándame todo junto para completar tu *Poke ${size}* 🥗`
+                    text: `⚠️ Te falta elegir:\n\n${missing.join("\n")}\n\nMándame todo junto para completar tu *Poke ${size}* 🥗`
                 });
                 return;
             }
