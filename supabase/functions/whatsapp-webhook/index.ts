@@ -85,16 +85,12 @@ async function handleBasicIntent(context: MessageContext): Promise<BotResponse |
         const greeting = await generatePersonalizedGreeting(context.from, history as any);
 
         return {
-            text: greeting,
-            useButtons: true,
-            buttons: ['Ver Menú', 'Armar un Poke']
+            text: greeting
         };
     } catch (e) {
         console.error("Error generating greeting:", e);
         return {
-            text: "¡Hola! 👋 Bienvenido a *Yoko Poké* 🍣\n\n¿En qué te puedo ayudar hoy?",
-            useButtons: true,
-            buttons: ['Ver Menú', 'Armar un Poke']
+            text: "¡Hola! 👋 Bienvenido a *Yoko Poké* 🍣\n\n¿En qué te puedo ayudar hoy?"
         };
     }
 }
@@ -1077,16 +1073,17 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 await updateSession(from, session);
 
                 // Send the menu image
-                await sendWhatsAppImage(from, 'https://yokopoke.mx/arma-tu-poke.jpg', `🥗 Poke ${selected.size} — $${selected.price}\n\nElige tus ingredientes de cada categoría 👇`);
+                await sendWhatsAppImage(from, 'https://yokopoke.mx/arma-tu-poke.jpg', `🥗 *POKE ${selected.size.toUpperCase()}* — $${selected.price}`);
 
-                // Follow-up message with size-specific quantities
-                const sizeInfo: Record<string, string> = {
-                    'Chico': '🍚 1 base, 🥩 1 proteína, 🥑 2 toppings, 🥜 1 crunch y 🫗 1 salsa',
-                    'Mediano': '🍚 1 base, 🥩 2 proteínas, 🥑 3 toppings, 🥜 2 crunch y 🫗 2 salsas',
-                    'Grande': '🍚 2 bases, 🥩 3 proteínas, 🥑 4 toppings, 🥜 2 crunch y 🫗 2 salsas'
+                // Clear step-by-step instructions
+                const sizeReqs: Record<string, { base: number, prote: number, topping: number, crunch: number, salsa: number }> = {
+                    'Chico': { base: 1, prote: 1, topping: 2, crunch: 1, salsa: 1 },
+                    'Mediano': { base: 1, prote: 2, topping: 3, crunch: 2, salsa: 2 },
+                    'Grande': { base: 2, prote: 3, topping: 4, crunch: 2, salsa: 2 }
                 };
+                const r = sizeReqs[selected.size];
                 await sendWhatsApp(from, {
-                    text: `✅ *Poke ${selected.size}* seleccionado 🥗\n\nTu tamaño incluye:\n${sizeInfo[selected.size]}\n\nEnvíame todo en un solo mensaje 👇\n🍚 Base + 🥩 Proteína + 🥑 Toppings + 🥜 Crunch + 🫗 Salsa\n\n_Ejemplo: Arroz blanco, atún fresco, aguacate, mango, won ton, ponzu_`
+                    text: `✅ *Poke ${selected.size}* seleccionado 🥗\n\nElige tus ingredientes de la imagen y mándamelos *todos en un solo mensaje*:\n\n🍚 *${r.base} Base:* Arroz blanco, Arroz negro, Pasta o Mix de vegetales\n🥩 *${r.prote} Proteína${r.prote > 1 ? 's' : ''}:* Atún, Salmón, Camarones, Pollo, Arrachera o Surimi\n🥑 *${r.topping} Toppings:* Aguacate, Mango, Pepino, Edamame, Elote, Zanahoria...\n🥜 *${r.crunch} Crunch:* Won Ton, Cacahuate, Almendra, Banana chips...\n🫗 *${r.salsa} Salsa${r.salsa > 1 ? 's' : ''}:* Ponzu, Siracha, Mayo cilantro, Soya...\n\n_Ejemplo: Arroz blanco, atún, aguacate, mango, won ton, ponzu_\n\nEscribe *cancelar* para salir.`
                 });
                 return;
             }
