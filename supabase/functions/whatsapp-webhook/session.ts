@@ -30,8 +30,15 @@ export interface CheckoutState {
     };
     fullAddress?: string; // "Calle X #123, Colonia Y"
     addressReferences?: string; // "Casa azul, portón negro"
-    orderConfirmed?: boolean; // Idempotency: prevent duplicate order inserts
-    namePromptShown?: boolean; // Track if pre-fill name prompt was shown
+    orderConfirmed?: boolean;
+    namePromptShown?: boolean;
+    cart?: Array<{
+        id: number;
+        name: string;
+        price: number;
+        quantity: number;
+        customizations?: string;
+    }>;
 }
 
 export interface SessionData {
@@ -39,6 +46,23 @@ export interface SessionData {
     builderState?: BuilderState;
     checkoutState?: CheckoutState;
     lastInteraction: number;
+
+    // Poke Builder state
+    pokeBuilder?: {
+        size: string;
+        price: number;
+        productId: number;
+        startedAt?: number;
+        partialIngredients?: {
+            base: string[];
+            proteina: string[];
+            topping: string[];
+            crunch: string[];
+            salsa: string[];
+        };
+        parsedIngredients?: any;
+        ingredientsSummary?: string;
+    };
 
     // NEW: Upsell Tracking
     upsellProduct?: {
