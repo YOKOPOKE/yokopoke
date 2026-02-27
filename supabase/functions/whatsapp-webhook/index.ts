@@ -1679,6 +1679,24 @@ export async function processMessage(from: string, text: string): Promise<void> 
             session.activeThreadId = undefined;
             await updateSession(from, session);
         }
+
+        // 🔄 DRAIN LOOP: Check for messages that arrived during processing
+        try {
+            const freshSession = await getSession(from);
+            if (freshSession.pendingMessages && freshSession.pendingMessages.length > 0 && !freshSession.isProcessing) {
+                console.log(`📬 Drain: ${freshSession.pendingMessages.length} pending messages found for ${from}`);
+                // Pick the first pending message and re-process
+                const nextMsg = freshSession.pendingMessages[0];
+                // Don't recurse infinitely — use a simple re-entry
+                setTimeout(async () => {
+                    try {
+                        await processMessage(from, nextMsg.text);
+                    } catch (e) {
+                        console.error("Drain loop error:", e);
+                    }
+                }, 1000); // 1s delay to avoid race conditions
+            }
+        } catch (_) { /* non-critical */ }
     }
 }
 
