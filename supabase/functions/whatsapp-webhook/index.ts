@@ -784,7 +784,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
             // Stale session check — if inactive for 30+ min, reset
             const pokeStarted = session.pokeBuilder.startedAt || 0;
             if (pokeStarted > 0 && (now - pokeStarted) > 30 * 60 * 1000) {
-                console.log(`⏰ Poke Builder expired (${Math.round((now - pokeStarted)/60000)} min)`);
+                console.log(`⏰ Poke Builder expired (${Math.round((now - pokeStarted) / 60000)} min)`);
                 session.mode = 'NORMAL';
                 session.pokeBuilder = undefined;
                 session.isProcessing = false;
@@ -872,7 +872,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 if (merged.topping.length > 0) have.push(`🥑 ${merged.topping.join(', ')}`);
                 if (merged.crunch.length > 0) have.push(`🥜 ${merged.crunch.join(', ')}`);
                 if (merged.salsa.length > 0) have.push(`🫗 ${merged.salsa.join(', ')}`);
-                
+
                 const haveText = have.length > 0 ? `\n✅ *Llevas:*\n${have.join('\n')}\n` : '';
                 await updateSession(from, session);
                 await sendWhatsApp(from, {
@@ -938,12 +938,12 @@ export async function processMessage(from: string, text: string): Promise<void> 
             }
 
             if (isConfirm) {
-                const { size, price, productId, ingredientsSummary } = session.pokeBuilder;
+                const { size, price, productId, ingredientsSummary } = session.pokeBuilder!;
 
-                if (!session.checkoutState) session.checkoutState = {};
-                if (!session.checkoutState.cart) session.checkoutState.cart = [];
+                if (!session.checkoutState) session.checkoutState = {} as any;
+                if (!(session.checkoutState as any).cart) (session.checkoutState as any).cart = [];
 
-                session.checkoutState.cart.push({
+                (session.checkoutState as any).cart.push({
                     id: productId,
                     name: `POKE ${size.toUpperCase()}`,
                     price: price,
@@ -957,7 +957,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                 session.activeThreadId = undefined;
                 await updateSession(from, session);
 
-                const cartTotal = session.checkoutState.cart.reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
+                const cartTotal = ((session.checkoutState as any).cart || []).reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
                 await sendWhatsApp(from, {
                     text: `✅ *Poke ${size} agregado* 🛒\n\n📝 ${ingredientsSummary}\n💰 $${price}\n\n🛒 *Total: $${cartTotal}*\n\n¿Deseas algo más o finalizar tu pedido?`,
                     useButtons: true,
