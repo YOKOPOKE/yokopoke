@@ -2094,9 +2094,11 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
 
     // 6. Burgers - Show with descriptions + sauce info
     if (text.includes('burger') || text.includes('hamburguesa') || text.includes('burgers') || text.includes('sushi burger')) {
+        console.log(`🍔 Burger Fast Pass triggered for: "${text.substring(0, 50)}"`);
         const prodService = await import('./productService.ts');
         const categories = await prodService.getCategories();
-        const burgerCat = categories.find(c => c.slug === 'burgers');
+        const burgerCat = categories.find((c: any) => c.slug === 'burgers' || c.slug === 'sushi-burgers' || c.name.toLowerCase().includes('burger'));
+        console.log(`🍔 Burger category found: ${burgerCat ? burgerCat.name + ' (slug: ' + burgerCat.slug + ')' : 'NOT FOUND'}`);
         if (burgerCat) {
             const products = await prodService.getProductsByCategory(burgerCat.id);
 
