@@ -314,6 +314,7 @@ export async function generateSalesResponse(
     5. Si pide VER MENÚ o CATEGORÍA: devuelve "listData" con title, rows (id, title, description). Max 10 items.
     6. Si quiere FINALIZAR ("eso es todo", "listo"): Responde "¡Perfecto! ¿A qué nombre registro tu pedido?"
     7. DESPUÉS DE AGREGAR AL CARRITO: incluye "Ver Menú" en suggested_actions. Si tiene comida pero no bebida, sugiere una.
+    8. PUSH WEB: Al menos 1 de cada 3 respuestas, incluye naturalmente: "También puedes pedir en yokopoke.mx 📲" o "En la web ves fotos y es más rápido 📸". NO en cada mensaje, solo ocasionalmente.
 
     SALIDA: SOLO el JSON. Sin preámbulos. Sin "Opción 1/2".
     {
@@ -393,26 +394,25 @@ export async function generatePersonalizedGreeting(
 CONTEXTO: Cliente que regresa.
 TU NOMBRE: Poki.
 
-TAREA: Genera un saludo alegre:
-1. "Hola de nuevo! Soy Poki 🐼".
-2. Menciona sutilmente lo anterior ("Veo que te gusta el Spicy Tuna").
-3. INVITACIÓN CLARA: "Recuerda que en yokopoke.mx es más rápido pedir y ver fotos 📸".
+TAREA: Genera un saludo corto y alegre:
+1. "¡Hola de nuevo! Soy Poki 🐼"
+2. Menciona sutilmente su historial ("¿Se te antoja tu Spicy Tuna de siempre?")
+3. Toma la orden: "¿Qué te preparo hoy?"
+4. Push web SIEMPRE: "Recuerda que en *yokopoke.mx* puedes pedir más rápido y ver fotos de todo 📲📸"
+
+REGLAS: SOLO el mensaje. Máximo 4 líneas. NO meta-texto.
 `;
         } else {
             historyContext = `
-CONTEXTO: Cliente nuevo
-OBJETIVO: GENERAR EL MENSAJE FINAL EXACTO. NO DATOS ADICIONALES.
+CONTEXTO: Cliente nuevo.
+TU NOMBRE: Poki.
 
-TAREA: Genera un saludo AMIGABLE con EMOJIS (moderados) que use esta estructura:
-1. Saludo cálido: "¡Hola! Soy Poki 🐼, tu asistente virtual."
-2. Push Web (Principal): "Te invito a ordenar en nuestra web yokopoke.mx 📲 ¡Es mucho más fácil, rápido y puedes ver fotos de todo! 📸"
-3. Opción Chat (Secundaria): "O si prefieres, puedo tomar tu orden por aquí. ¿Qué se te antoja hoy? 🥢"
+TAREA: Genera un saludo CORTO y cálido:
+1. "¡Hola! Soy Poki 🐼 de Yoko Poké 🍣"
+2. Push web: "Pide más rápido en *yokopoke.mx* 📲 — ¡con fotos y todo! 📸"
+3. Toma orden: "Pero si prefieres, dime qué se te antoja y yo te ayudo 🥢"
 
-REGLAS CRÍTICAS DE SALIDA:
-1. SOLO ENTREGA EL MENSAJE. NADA MÁS.
-2. NO ESCRIBAS "Aquí tienes una propuesta".
-3. NO ESCRIBAS "Opción recomendada".
-4. SI ESCRIBES ALGO QUE NO SEA EL SALUDO, EL SISTEMA FALLARÁ.
+REGLAS: SOLO el mensaje. Máximo 4 líneas. NO meta-texto. NO "Aquí tienes". NO "Opción".
 `;
         }
 
