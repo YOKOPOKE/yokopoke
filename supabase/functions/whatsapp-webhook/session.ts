@@ -81,6 +81,17 @@ export interface SessionData {
         payload?: any;        // For location/media data
     }[]; // Queue of incoming messages
 
+    // SAUCE SELECTION STATE
+    pendingSauceFor?: {
+        cartIndex: number;
+        productName: string;
+        stepId: number;
+        options: any[];
+        included: number;
+        maxSelections: number;
+        extraPrice: number;
+    };
+
     // ERROR TRACKING
     errorCount?: number;      // Circuit breaker for session resets
     lastError?: string;       // Debug info

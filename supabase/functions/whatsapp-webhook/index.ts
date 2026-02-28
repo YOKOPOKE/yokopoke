@@ -564,10 +564,35 @@ function calculateOrderDetails(product: ProductTree, selections: Record<number, 
 /**
  * Main Logic
  */
+
+/**
+ * Safe Queue Append: Prevents message loss during rapid-fire race conditions.
+ * Reads fresh session, appends message, writes back. Retries on failure.
+ */
+async function safeAppendToQueue(from: string, newMsg: { text: string; type: 'text' | 'audio' | 'image' | 'location'; timestamp: number }) {
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const session = await getSession(from);
+        if (!session.pendingMessages) session.pendingMessages = [];
+        const isDuplicate = session.pendingMessages.some((m: any) =>
+            m.text === newMsg.text && Math.abs(m.timestamp - newMsg.timestamp) < 500
+        );
+        if (!isDuplicate) session.pendingMessages.push(newMsg);
+        try {
+            await updateSession(from, session);
+            return session;
+        } catch (e) {
+            console.warn(`Queue append retry ${attempt + 1}/${maxRetries} for ${from}`);
+            await new Promise(r => setTimeout(r, 100 + Math.random() * 200));
+        }
+    }
+    return await getSession(from);
+}
+
 export async function processMessage(from: string, text: string): Promise<void> {
-    /* DEBOUNCE LOGIC WITH FAST PASS EXCEPTION */
-    let session = await getSession(from);
     const now = Date.now();
+    // Queue the message atomically FIRST (prevents loss during race conditions)
+    let session = await safeAppendToQueue(from, { text, type: 'text' as const, timestamp: now });
 
     // --- HUMAN MODE (The "Pausa" Button) ---
     const lowerText = text.toLowerCase().trim();
@@ -688,25 +713,16 @@ export async function processMessage(from: string, text: string): Promise<void> 
         // Don't return — let the message flow through the normal batching below
     }
 
-    // --- SMART MESSAGE BATCHING ---
-    // Queue the message immediately in DB
-    if (!session.pendingMessages) session.pendingMessages = [];
-    session.pendingMessages.push({
-        text: text,
-        type: 'text',
-        timestamp: Date.now()
-    });
-
+    // --- SMART MESSAGE BATCHING (Queuing already done by safeAppendToQueue) ---
     // Watchdog: Break Stale Locks (>25s)
     if (session.isProcessing && session.processingStart && (Date.now() - session.processingStart > 25000)) {
         console.warn(`🐕 Watchdog: Breaking stale lock for ${from} (>25s)`);
         session.isProcessing = false;
     }
 
-    // If locked, just queue and exit — the active processor will pick it up
+    // If locked, exit — message already safely queued by safeAppendToQueue
     if (session.isProcessing) {
-        console.log(`🔒 Session locked for ${from}. Queued message #${session.pendingMessages.length}.`);
-        await updateSession(from, session);
+        console.log(`🔒 Session locked for ${from}. Message safely queued.`);
         return;
     }
 
@@ -798,13 +814,19 @@ export async function processMessage(from: string, text: string): Promise<void> 
             const sauceInfo = (session as any).pendingSauceFor;
             const lower = aggregatedText.toLowerCase();
 
-            // Skip/cancel
-            if (lower === 'no' || lower === 'sin salsa' || lower.includes('ninguna') || lower.includes('cancelar') || lower === 'skip') {
+            // Skip/cancel/button clicks
+            const isButtonClick = ['pagar', '💳', 'menú', 'menu', 'seguir', 'ver'].some(k => lower.includes(k));
+            if (lower === 'no' || lower === 'sin salsa' || lower.includes('ninguna') || lower.includes('cancelar') || lower === 'skip' || isButtonClick) {
                 (session as any).pendingSauceFor = undefined;
                 session.isProcessing = false;
                 await updateSession(from, session);
-                await sendWhatsApp(from, { text: `✅ *${sauceInfo.productName}* sin salsas. ¿Algo más?` });
-                return;
+                if (isButtonClick) {
+                    // Don't return — fall through to normal router to handle the button
+                    console.log(`🫗 Sauce selection cleared, handling button: ${lower}`);
+                } else {
+                    await sendWhatsApp(from, { text: `✅ *${sauceInfo.productName}* sin salsas. ¿Algo más?` });
+                    return;
+                }
             }
 
             // Parse sauce selection with fuzzy matching
@@ -846,7 +868,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
             // Update cart item with sauces
             if (session.cart && session.cart[sauceInfo.cartIndex]) {
-                session.cart[sauceInfo.cartIndex].customizations = `Salsas: ${finalSauces.join(', ')}`;
+                session.cart[sauceInfo.cartIndex].customization = `Salsas: ${finalSauces.join(', ')}`;
                 if (extraCost > 0) {
                     session.cart[sauceInfo.cartIndex].price += extraCost;
                 }
@@ -858,10 +880,11 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
             let extraMsg = extraCost > 0 ? `\n💰 +$${extraCost} por ${extraCount} salsa(s) extra` : '';
             const cartTotal = (session.cart || []).reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
+            const sauceListStr = finalSauces.map((s: string) => '• ' + s).join('\n');
             await sendWhatsApp(from, {
-                text: `✅ *${sauceInfo.productName}* con ${finalSauces.join(', ')}${extraMsg}\n\n🛒 *Total: $${cartTotal}*\n\n¿Algo más o finalizamos?`,
+                text: `✅ *${sauceInfo.productName}* agregada con:\n${sauceListStr}${extraMsg}\n\n🛒 *Total: $${cartTotal}*\n\n¿Algo más o finalizamos?`,
                 useButtons: true,
-                buttons: ['Pagar 💳', 'Ver Menú', 'Seguir pidiendo']
+                buttons: ['Seguir pidiendo', 'Pagar 💳', 'Ver Menú']
             });
             return;
         }
@@ -1678,7 +1701,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                                     name: realProduct.name,
                                     price: realProduct.base_price,
                                     quantity: requested.quantity || 1,
-                                    customizations: requested.customizations || ''
+                                    customization: requested.customizations || ''
                                 });
                                 console.log(`✅ Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
                             }
