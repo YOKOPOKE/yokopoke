@@ -315,6 +315,7 @@ export async function generateSalesResponse(
     6. Si quiere FINALIZAR ("eso es todo", "listo"): Responde "¡Perfecto! ¿A qué nombre registro tu pedido?"
     7. DESPUÉS DE AGREGAR AL CARRITO: incluye "Ver Menú" en suggested_actions. Si tiene comida pero no bebida, sugiere una.
     8. PUSH WEB: Al menos 1 de cada 3 respuestas, incluye naturalmente: "También puedes pedir en yokopoke.mx 📲" o "En la web ves fotos y es más rápido 📸". NO en cada mensaje, solo ocasionalmente.
+    9. NUNCA INVENTES PRODUCTOS: SOLO usa productos del MENÚ DISPONIBLE arriba. Si el usuario pide algo que NO existe en el menú, dile que no lo tenemos. NO inventes nombres, precios ni opciones. Si solo hay 1 producto en una categoría, agrégalo directo sin preguntar cuál.
 
     SALIDA: SOLO el JSON. Sin preámbulos. Sin "Opción 1/2".
     {

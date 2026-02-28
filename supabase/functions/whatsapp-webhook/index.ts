@@ -1697,22 +1697,49 @@ export async function processMessage(from: string, text: string): Promise<void> 
                                         return `• ${o.name}${extra}`;
                                     }).join('\n');
 
-                                    // Store pending sauce selection
-                                    session.pendingSauceFor = {
-                                        cartIndex: session.cart.length - 1,
-                                        productName: realProduct.name,
-                                        stepId: sauceStep.id,
-                                        options: sauceStep.options,
-                                        included,
-                                        maxSelections: maxSel,
-                                        extraPrice
-                                    };
-                                    await updateSession(from, session);
+                                    // Check if user already mentioned sauces in their message
+                                    const userLower = aggregatedText.toLowerCase();
+                                    const preMentioned: string[] = [];
+                                    for (const opt of sauceStep.options) {
+                                        const oName = opt.name.toLowerCase();
+                                        // Fuzzy: "mayoajo"→"mayo ajo", "mango"→"mango habanero"
+                                        if (userLower.includes(oName) ||
+                                            userLower.includes(oName.replace(/\s+/g, '')) ||
+                                            (oName.includes(' ') && userLower.includes(oName.split(' ')[0]) && oName.split(' ').length <= 2)) {
+                                            preMentioned.push(opt.name);
+                                        }
+                                    }
 
-                                    // Override the response to ask for sauces
-                                    salesRes.text = `🍔 *${realProduct.name}* agregada al carrito — $${realProduct.base_price}\n\n🫗 *Elige tus salsas* (${included} incluidas, máx ${maxSel}):\n\n${sauceList}\n\n_Escribe las salsas que quieres separadas por coma_\n_Ej: Siracha, Ponzu_`;
-                                    salesRes.useButtons = false;
-                                    salesRes.suggested_actions = undefined;
+                                    if (preMentioned.length > 0) {
+                                        // User already chose sauces! Apply directly
+                                        const finalSauces = preMentioned.slice(0, maxSel);
+                                        const extraCount = Math.max(0, finalSauces.length - included);
+                                        const extraCost = extraCount * extraPrice;
+
+                                        session.cart[session.cart.length - 1].customization = `Salsas: ${finalSauces.join(', ')}`;
+                                        if (extraCost > 0) session.cart[session.cart.length - 1].price += extraCost;
+
+                                        await updateSession(from, session);
+                                        const extraMsg = extraCost > 0 ? `\n💰 +$${extraCost} extra` : '';
+                                        salesRes.text = `🍔 *${realProduct.name}* con ${finalSauces.join(' y ')} — $${realProduct.base_price}${extraMsg}\n\n✅ Agregada a tu orden.`;
+                                        salesRes.suggested_actions = ['Pagar 💳', 'Ver Menú'];
+                                    } else {
+                                        // No sauces mentioned — ask
+                                        session.pendingSauceFor = {
+                                            cartIndex: session.cart.length - 1,
+                                            productName: realProduct.name,
+                                            stepId: sauceStep.id,
+                                            options: sauceStep.options,
+                                            included,
+                                            maxSelections: maxSel,
+                                            extraPrice
+                                        };
+                                        await updateSession(from, session);
+
+                                        salesRes.text = `🍔 *${realProduct.name}* agregada al carrito — $${realProduct.base_price}\n\n🫗 *Elige tus salsas* (${included} incluidas, máx ${maxSel}):\n\n${sauceList}\n\n_Escribe las salsas que quieres separadas por coma_\n_Ej: Siracha, Ponzu_`;
+                                        salesRes.useButtons = false;
+                                        salesRes.suggested_actions = undefined;
+                                    }
                                 }
                             }
                         } else {
