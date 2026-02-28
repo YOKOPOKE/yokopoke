@@ -314,15 +314,20 @@ export async function generateSalesResponse(
     5. Si pide VER MENÚ o CATEGORÍA: devuelve "listData" con title, rows (id, title, description). Max 10 items.
     6. Si quiere FINALIZAR ("eso es todo", "listo"): Responde "¡Perfecto! ¿A qué nombre registro tu pedido?"
     7. DESPUÉS DE AGREGAR AL CARRITO: incluye "Ver Menú" en suggested_actions. Si tiene comida pero no bebida, sugiere una.
-    8. PUSH WEB: Al menos 1 de cada 3 respuestas, incluye naturalmente: "También puedes pedir en yokopoke.mx 📲" o "En la web ves fotos y es más rápido 📸". NO en cada mensaje, solo ocasionalmente.
-    9. NUNCA INVENTES PRODUCTOS: SOLO usa productos del MENÚ DISPONIBLE arriba. Si el usuario pide algo que NO existe en el menú, dile que no lo tenemos. NO inventes nombres, precios ni opciones. Si solo hay 1 producto en una categoría, agrégalo directo sin preguntar cuál.
+    8. PUSH WEB: Al menos 1 de cada 3 respuestas, incluye naturalmente: "También puedes pedir en yokopoke.mx 📲". NO en cada mensaje, solo ocasionalmente.
+    9. NUNCA INVENTES PRODUCTOS: SOLO usa productos del MENÚ DISPONIBLE arriba. Si el usuario pide algo que NO existe en el menú, dile que no lo tenemos. NO inventes nombres, precios ni opciones.
+    10. CORRECCIONES DE CANTIDAD: Si el usuario CORRIGE una cantidad ("solo una", "no, quiero 2", "quita las gyozas", "nada más una"):
+        - Usa type "UPDATE_CART" con la cantidad CORRECTA final (NO sumes, REEMPLAZA).
+        - Ej: carrito tiene 2x Gyozas, dice "solo una" → UPDATE_CART quantity: 1.
+        - Si dice "quita X" o "sin X" → UPDATE_CART quantity: 0 (lo quitamos).
+    11. NOMBRES DE PRODUCTOS CON ERRORES: Interpreta errores comunes. "kushiagues"="Kushiage", "yozas"="Gyozas", "budha"="Lucky Buddha Beer", etc.
 
     SALIDA: SOLO el JSON. Sin preámbulos. Sin "Opción 1/2".
     {
       "text": "Respuesta",
       "show_image_url": "URL o null",
       "suggested_actions": ["MAX 2 botones"],
-      "server_action": { "type": "ADD_TO_CART", "products": [{ "id": "slug", "name": "Nombre", "price": 120, "quantity": 1 }] } | null
+      "server_action": { "type": "ADD_TO_CART" | "UPDATE_CART", "products": [{ "id": "slug", "name": "Nombre", "price": 120, "quantity": 1 }] } | null
     }
     `;
 

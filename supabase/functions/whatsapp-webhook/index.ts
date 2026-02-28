@@ -1663,47 +1663,89 @@ export async function processMessage(from: string, text: string): Promise<void> 
                     };
                 }
 
-                // --- HANDLE SERVER ACTIONS (ADD TO CART) with REALITY CHECK ---
-                if (salesRes.server_action && salesRes.server_action.type === 'ADD_TO_CART') {
+                // --- HANDLE SERVER ACTIONS (ADD/UPDATE CART) with REALITY CHECK ---
+                const actionType = (salesRes.server_action as any)?.type as string;
+                if (salesRes.server_action && (actionType === 'ADD_TO_CART' || actionType === 'UPDATE_CART')) {
                     const products = salesRes.server_action.products ||
                         ((salesRes.server_action as any).product ? [(salesRes.server_action as any).product] : []);
 
-                    console.log(`🛒 Executing ADD_TO_CART for ${products.length} product(s)`);
+                    console.log(`🛒 Executing ${actionType} for ${products.length} product(s)`);
                     if (!session.cart) session.cart = [];
 
+                    // Fuzzy product name matching helper
+                    const fuzzyFind = (name: string) => {
+                        const lower = name.toLowerCase().trim();
+                        // Common typo corrections
+                        const typoMap: Record<string, string> = {
+                            'kushiagues': 'kushiage', 'kushiage': 'kushiage', 'kushiages': 'kushiage',
+                            'yozas': 'gyozas', 'giozas': 'gyozas', 'guiozas': 'gyozas',
+                            'budha': 'lucky buddha', 'buda': 'lucky buddha', 'buddha': 'lucky buddha',
+                            'coca': 'coca cola', 'cocacola': 'coca cola',
+                        };
+                        const corrected = typoMap[lower] || lower;
+                        return allProducts.find((p: any) => {
+                            const pName = p.name.toLowerCase();
+                            const pSlug = (p.slug || '').toLowerCase();
+                            return pName === corrected || pSlug === corrected ||
+                                pName.includes(corrected) || corrected.includes(pName) ||
+                                pName.replace(/\s+/g, '').includes(corrected.replace(/\s+/g, '')) ||
+                                corrected.replace(/\s+/g, '').includes(pName.replace(/\s+/g, ''));
+                        });
+                    };
+
                     for (const requested of products) {
-                        const requestedId = requested.id;
-                        const requestedName = requested.name;
-
                         // REALITY CHECK: Does this product actually exist?
-                        let realProduct = allProducts.find(p => String(p.id) === String(requestedId) || p.slug === requestedId);
+                        let realProduct = allProducts.find((p: any) => String(p.id) === String(requested.id) || p.slug === requested.id);
 
-                        // If not found by ID/Slug, fuzzy search by Name
-                        if (!realProduct && requestedName) {
-                            realProduct = allProducts.find(p => p.name.toLowerCase().includes(requestedName.toLowerCase()));
+                        // If not found by ID/Slug, use enhanced fuzzy matching
+                        if (!realProduct && requested.name) {
+                            realProduct = fuzzyFind(requested.name);
                         }
 
                         if (realProduct) {
-                            // Check if product has customization steps (e.g. sauces for burgers)
                             const fullProd = await prodService.getProductBySlug(realProduct.slug || '');
                             const hasSauces = fullProd?.steps?.some((s: any) =>
                                 s.label?.toLowerCase().includes('salsa') || s.name?.toLowerCase().includes('salsa')
                             );
 
-                            // Consolidate: if same product exists, increase quantity
-                            const existingItem = session.cart.find((c: any) => String(c.id) === String(realProduct!.id) || c.name === realProduct!.name);
-                            if (existingItem && !hasSauces) {
-                                existingItem.quantity = (existingItem.quantity || 1) + (requested.quantity || 1);
-                                console.log(`✅ Updated Cart: ${realProduct.name} → qty ${existingItem.quantity}`);
+                            if (actionType === 'UPDATE_CART') {
+                                // UPDATE_CART: SET quantity (not add)
+                                const existingItem = session.cart.find((c: any) => String(c.id) === String(realProduct!.id) || c.name === realProduct!.name);
+                                const newQty = requested.quantity || 0;
+                                if (existingItem) {
+                                    if (newQty <= 0) {
+                                        session.cart = session.cart.filter((c: any) => c !== existingItem);
+                                        console.log(`🗑️ Removed from Cart: ${realProduct.name}`);
+                                    } else {
+                                        existingItem.quantity = newQty;
+                                        console.log(`✏️ Set Cart: ${realProduct.name} → qty ${newQty}`);
+                                    }
+                                } else if (newQty > 0) {
+                                    session.cart.push({
+                                        id: String(realProduct.id || realProduct.slug),
+                                        name: realProduct.name,
+                                        price: realProduct.base_price,
+                                        quantity: newQty,
+                                        customization: ''
+                                    });
+                                    console.log(`✅ Added to Cart (via UPDATE): ${realProduct.name} x${newQty}`);
+                                }
                             } else {
-                                session.cart.push({
-                                    id: String(realProduct.id || realProduct.slug),
-                                    name: realProduct.name,
-                                    price: realProduct.base_price,
-                                    quantity: requested.quantity || 1,
-                                    customization: requested.customizations || ''
-                                });
-                                console.log(`✅ Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
+                                // ADD_TO_CART: Normal add with consolidation
+                                const existingItem = session.cart.find((c: any) => String(c.id) === String(realProduct!.id) || c.name === realProduct!.name);
+                                if (existingItem && !hasSauces) {
+                                    existingItem.quantity = (existingItem.quantity || 1) + (requested.quantity || 1);
+                                    console.log(`✅ Updated Cart: ${realProduct.name} → qty ${existingItem.quantity}`);
+                                } else {
+                                    session.cart.push({
+                                        id: String(realProduct.id || realProduct.slug),
+                                        name: realProduct.name,
+                                        price: realProduct.base_price,
+                                        quantity: requested.quantity || 1,
+                                        customization: ''
+                                    });
+                                    console.log(`✅ Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
+                                }
                             }
 
                             // 🫗 If product has sauce steps, prompt for sauce selection
@@ -1766,7 +1808,7 @@ export async function processMessage(from: string, text: string): Promise<void> 
                                 }
                             }
                         } else {
-                            console.warn(`🛑 BLOCKED Hallucinated Product: ${requestedName} (ID: ${requestedId})`);
+                            console.warn(`🛑 BLOCKED Hallucinated Product: ${requested.name} (ID: ${requested.id})`);
                         }
                     }
                     // Build premium cart summary
