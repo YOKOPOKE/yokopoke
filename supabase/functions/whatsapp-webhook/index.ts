@@ -783,6 +783,80 @@ export async function processMessage(from: string, text: string): Promise<void> 
     // --- DETERMINISTIC ROUTER (THE "CEREBELLUM") ---
     let sessionCleared = false; // #2 FIX: Track if session was cleared to protect finally block
     try {
+
+        // 🫗 SAUCE SELECTION HANDLER (for burgers/products with sauce steps)
+        if ((session as any).pendingSauceFor) {
+            const sauceInfo = (session as any).pendingSauceFor;
+            const lower = aggregatedText.toLowerCase();
+
+            // Skip/cancel
+            if (lower === 'no' || lower === 'sin salsa' || lower.includes('ninguna') || lower.includes('cancelar') || lower === 'skip') {
+                (session as any).pendingSauceFor = undefined;
+                session.isProcessing = false;
+                await updateSession(from, session);
+                await sendWhatsApp(from, { text: `✅ *${sauceInfo.productName}* sin salsas. ¿Algo más?` });
+                return;
+            }
+
+            // Parse sauce selection with fuzzy matching
+            const availableNames = sauceInfo.options.map((o: any) => o.name.toLowerCase());
+            const userParts = lower.split(/[,\.\sy]+/).map((s: string) => s.trim()).filter(Boolean);
+            const matched: string[] = [];
+
+            for (const part of userParts) {
+                if (!part || part.length < 2) continue;
+                // Exact or fuzzy match
+                const found = sauceInfo.options.find((o: any) => {
+                    const oName = o.name.toLowerCase();
+                    return oName.includes(part) || part.includes(oName) ||
+                        oName.replace(/\s+/g, '').includes(part.replace(/\s+/g, '')) ||
+                        (part.length > 3 && oName.startsWith(part.substring(0, 3)));
+                });
+                if (found && !matched.includes(found.name)) {
+                    matched.push(found.name);
+                }
+            }
+
+            if (matched.length === 0) {
+                // Retry
+                const sauceList = sauceInfo.options.map((o: any) => `• ${o.name}`).join('\n');
+                session.isProcessing = false;
+                await updateSession(from, session);
+                await sendWhatsApp(from, {
+                    text: `⚠️ No reconocí las salsas. Elige de esta lista:\n\n${sauceList}\n\n_Escribe los nombres separados por coma_\n_O "sin salsa" si no quieres_`
+                });
+                return;
+            }
+
+            // Cap at max selections
+            const finalSauces = matched.slice(0, sauceInfo.maxSelections);
+
+            // Calculate extras
+            const extraCount = Math.max(0, finalSauces.length - sauceInfo.included);
+            const extraCost = extraCount * sauceInfo.extraPrice;
+
+            // Update cart item with sauces
+            if (session.cart && session.cart[sauceInfo.cartIndex]) {
+                session.cart[sauceInfo.cartIndex].customizations = `Salsas: ${finalSauces.join(', ')}`;
+                if (extraCost > 0) {
+                    session.cart[sauceInfo.cartIndex].price += extraCost;
+                }
+            }
+
+            (session as any).pendingSauceFor = undefined;
+            session.isProcessing = false;
+            await updateSession(from, session);
+
+            let extraMsg = extraCost > 0 ? `\n💰 +$${extraCost} por ${extraCount} salsa(s) extra` : '';
+            const cartTotal = (session.cart || []).reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
+            await sendWhatsApp(from, {
+                text: `✅ *${sauceInfo.productName}* con ${finalSauces.join(', ')}${extraMsg}\n\n🛒 *Total: $${cartTotal}*\n\n¿Algo más o finalizamos?`,
+                useButtons: true,
+                buttons: ['Pagar 💳', 'Ver Menú', 'Seguir pidiendo']
+            });
+            return;
+        }
+
         // A. MODE-BASED ROUTING (Highest Priority)
         // If we are in a specific mode, we stay there until explicitly exited.
 
@@ -1578,9 +1652,15 @@ export async function processMessage(from: string, text: string): Promise<void> 
                         }
 
                         if (realProduct) {
+                            // Check if product has customization steps (e.g. sauces for burgers)
+                            const fullProd = await prodService.getProductBySlug(realProduct.slug || '');
+                            const hasSauces = fullProd?.steps?.some((s: any) =>
+                                s.label?.toLowerCase().includes('salsa') || s.name?.toLowerCase().includes('salsa')
+                            );
+
                             // Consolidate: if same product exists, increase quantity
                             const existingItem = session.cart.find((c: any) => String(c.id) === String(realProduct!.id) || c.name === realProduct!.name);
-                            if (existingItem) {
+                            if (existingItem && !hasSauces) {
                                 existingItem.quantity = (existingItem.quantity || 1) + (requested.quantity || 1);
                                 console.log(`✅ Updated Cart: ${realProduct.name} → qty ${existingItem.quantity}`);
                             } else {
@@ -1588,9 +1668,43 @@ export async function processMessage(from: string, text: string): Promise<void> 
                                     id: String(realProduct.id || realProduct.slug),
                                     name: realProduct.name,
                                     price: realProduct.base_price,
-                                    quantity: requested.quantity || 1
+                                    quantity: requested.quantity || 1,
+                                    customizations: requested.customizations || ''
                                 });
                                 console.log(`✅ Added to Cart: ${realProduct.name} ($${realProduct.base_price})`);
+                            }
+
+                            // 🫗 If product has sauce steps, prompt for sauce selection
+                            if (hasSauces && fullProd?.steps) {
+                                const sauceStep = fullProd.steps.find((s: any) =>
+                                    s.label?.toLowerCase().includes('salsa') || s.name?.toLowerCase().includes('salsa')
+                                );
+                                if (sauceStep && sauceStep.options?.length > 0) {
+                                    const included = sauceStep.included_selections || 0;
+                                    const maxSel = sauceStep.max_selections || 4;
+                                    const extraPrice = sauceStep.price_per_extra || 0;
+                                    const sauceList = sauceStep.options.map((o: any) => {
+                                        const extra = o.price_extra > 0 ? ` (+$${o.price_extra})` : '';
+                                        return `• ${o.name}${extra}`;
+                                    }).join('\n');
+
+                                    // Store pending sauce selection
+                                    session.pendingSauceFor = {
+                                        cartIndex: session.cart.length - 1,
+                                        productName: realProduct.name,
+                                        stepId: sauceStep.id,
+                                        options: sauceStep.options,
+                                        included,
+                                        maxSelections: maxSel,
+                                        extraPrice
+                                    };
+                                    await updateSession(from, session);
+
+                                    // Override the response to ask for sauces
+                                    salesRes.text = `🍔 *${realProduct.name}* agregada al carrito — $${realProduct.base_price}\n\n🫗 *Elige tus salsas* (${included} incluidas, máx ${maxSel}):\n\n${sauceList}\n\n_Escribe las salsas que quieres separadas por coma_\n_Ej: Siracha, Ponzu_`;
+                                    salesRes.useButtons = false;
+                                    salesRes.suggested_actions = undefined;
+                                }
                             }
                         } else {
                             console.warn(`🛑 BLOCKED Hallucinated Product: ${requestedName} (ID: ${requestedId})`);
@@ -1696,21 +1810,21 @@ export async function processMessage(from: string, text: string): Promise<void> 
             while (drainAttempts < MAX_DRAINS) {
                 const freshSession = await getSession(from);
                 if (!freshSession.pendingMessages || freshSession.pendingMessages.length === 0 || freshSession.isProcessing) break;
-                
+
                 console.log(`📬 Drain #${drainAttempts + 1}: ${freshSession.pendingMessages.length} pending messages for ${from}`);
-                
+
                 // Aggregate ALL pending messages into one
                 const pendingTexts = freshSession.pendingMessages.map((m: any) => m.text).filter(Boolean);
                 if (pendingTexts.length === 0) break;
-                
+
                 const combinedText = pendingTexts.join('. ');
-                
+
                 // Clear the queue before processing
                 freshSession.pendingMessages = [];
                 freshSession.isProcessing = true;
                 freshSession.processingStart = Date.now();
                 await updateSession(from, freshSession);
-                
+
                 // Process inline (no setTimeout — reliable in serverless)
                 try {
                     await processMessage(from, combinedText);
@@ -1877,36 +1991,46 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
     }
     // If isGreeting AND hasOrderIntent → fall through to AI (Gemini handles greeting + order together)
 
-    // 6. Burgers - Convert to List Message
-    if (text.includes('burger') || text.includes('hamburguesa') || text.includes('burgers')) {
+    // 6. Burgers - Show with descriptions + sauce info
+    if (text.includes('burger') || text.includes('hamburguesa') || text.includes('burgers') || text.includes('sushi burger')) {
         const prodService = await import('./productService.ts');
         const categories = await prodService.getCategories();
         const burgerCat = categories.find(c => c.slug === 'burgers');
         if (burgerCat) {
             const products = await prodService.getProductsByCategory(burgerCat.id);
 
+            // Build rich descriptions with sauce info
+            const burgerDetails = await Promise.all(products.slice(0, 10).map(async (p) => {
+                const fullProduct = await prodService.getProductBySlug(p.slug || '');
+                let desc = `$${p.base_price}`;
+                if (fullProduct?.steps?.length) {
+                    const sauceStep = fullProduct.steps.find((s: any) => s.label?.toLowerCase().includes('salsa') || s.name?.toLowerCase().includes('salsa'));
+                    if (sauceStep) {
+                        const included = sauceStep.included_selections || 0;
+                        desc = `$${p.base_price} · ${included} salsas incluidas`;
+                    }
+                }
+                return { id: p.slug || p.id.toString(), title: p.name.substring(0, 24), description: desc.substring(0, 72) };
+            }));
+
             // Send as List Message
             const success = await sendListMessage(from, {
                 header: "🍔 Sushi Burgers",
-                body: "Nuestra fusión única.\n¿Cuál quieres probar?",
+                body: "Nuestra fusión japonesa-mexicana 🇯🇵��🇽\nCada burger incluye salsas a elegir.\n¿Cuál quieres probar?",
                 footer: "Yoko Poke",
                 buttonText: "Ver burgers",
                 sections: [{
                     title: "Sushi Burgers",
-                    rows: products.slice(0, 10).map(p => ({
-                        id: p.slug || p.id.toString(),
-                        title: p.name.substring(0, 24),
-                        description: `$${p.base_price}`
-                    }))
+                    rows: burgerDetails
                 }]
             });
 
-            if (success) return { text: "" }; // HANDLED: Stop further processing
+            if (success) return { text: "" }; // HANDLED
 
-            // Fallback
-            const list = products.slice(0, 3).map(p => `🍔 ${p.name} - $${p.base_price}`).join('\n');
+            // Fallback: rich text
+            const list = products.slice(0, 3).map(p => `🍔 *${p.name}* — $${p.base_price}`).join('\n');
             return {
-                text: `*Sushi Burgers:*\n\n${list}\n\nSelecciona una:`,
+                text: `🍔 *Sushi Burgers*\n\n${list}\n\n_Cada burger incluye 2 salsas a elegir_\n\n¿Cuál quieres?`,
                 useButtons: true,
                 buttons: products.slice(0, 3).map(p => p.name)
             };
