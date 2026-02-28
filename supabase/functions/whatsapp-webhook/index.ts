@@ -831,7 +831,12 @@ export async function processMessage(from: string, text: string): Promise<void> 
 
             // Parse sauce selection with fuzzy matching
             const availableNames = sauceInfo.options.map((o: any) => o.name.toLowerCase());
-            const userParts = lower.split(/[,\.\sy]+/).map((s: string) => s.trim()).filter(Boolean);
+            // Handle sauce list reply IDs (e.g., "sauce_siracha" → "siracha")
+            let sauceInput = lower;
+            if (lower.startsWith('sauce_')) {
+                sauceInput = lower.replace('sauce_', '').replace(/_/g, ' ');
+            }
+            const userParts = sauceInput.split(/[,\.\sy]+/).map((s: string) => s.trim()).filter(Boolean);
             const matched: string[] = [];
 
             for (const part of userParts) {
@@ -2102,8 +2107,105 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
         if (burgerCat) {
             const products = await prodService.getProductsByCategory(burgerCat.id);
 
-            // Build rich descriptions with sauce info
-            const burgerDetails = await Promise.all(products.slice(0, 10).map(async (p) => {
+            // Check if this is a SPECIFIC burger selection (list reply slug or exact name)
+            const selectedBurger = products.find((p: any) => {
+                const slug = (p.slug || '').toLowerCase();
+                const name = p.name.toLowerCase();
+                return text === slug || text === name ||
+                    text.replace(/-/g, ' ') === name ||
+                    name.includes(text.replace(/-/g, ' ')) ||
+                    text.replace(/-/g, ' ').includes(name);
+            });
+
+            if (selectedBurger) {
+                // USER SELECTED A SPECIFIC BURGER — Add to cart + Sauce prompt
+                console.log(`🍔 Selected burger: ${selectedBurger.name}`);
+                if (!session.cart) session.cart = [];
+
+                // Add to cart
+                const existing = session.cart.find((c: any) => c.name === selectedBurger.name);
+                if (existing) {
+                    existing.quantity = (existing.quantity || 1) + 1;
+                } else {
+                    session.cart.push({
+                        id: String(selectedBurger.id || selectedBurger.slug),
+                        name: selectedBurger.name,
+                        price: selectedBurger.base_price,
+                        quantity: 1,
+                        customization: ''
+                    });
+                }
+
+                // Check for sauce steps
+                const fullProd = await prodService.getProductBySlug(selectedBurger.slug || '');
+                const sauceStep = fullProd?.steps?.find((s: any) =>
+                    s.label?.toLowerCase().includes('salsa') || s.name?.toLowerCase().includes('salsa')
+                );
+
+                if (sauceStep && sauceStep.options?.length > 0) {
+                    const included = sauceStep.included_selections || 0;
+                    const maxSel = sauceStep.max_selections || 4;
+                    const extraPrice = sauceStep.price_per_extra || 0;
+
+                    // Set pending sauce state
+                    session.pendingSauceFor = {
+                        cartIndex: session.cart.length - 1,
+                        productName: selectedBurger.name,
+                        stepId: sauceStep.id,
+                        options: sauceStep.options,
+                        included,
+                        maxSelections: maxSel,
+                        extraPrice
+                    };
+
+                    const { updateSession } = await import('./session.ts');
+                    await updateSession(from, session);
+
+                    // Send sauce options as list message
+                    const sauceRows = sauceStep.options.map((o: any) => ({
+                        id: `sauce_${o.name.toLowerCase().replace(/\s+/g, '_')}`,
+                        title: o.name.substring(0, 24),
+                        description: o.price_extra > 0 ? `+$${o.price_extra}` : 'Incluida'
+                    }));
+
+                    const listSuccess = await sendListMessage(from, {
+                        header: `🫗 Salsas para ${selectedBurger.name}`,
+                        body: `🍔 *${selectedBurger.name}* — $${selectedBurger.base_price} ✅\n\nElige ${included} salsa(s) incluida(s).\nO escríbelas separadas por coma.\n_Ej: Siracha, Ponzu_`,
+                        footer: "Yoko Poke",
+                        buttonText: "Ver salsas",
+                        sections: [{
+                            title: "Salsas disponibles",
+                            rows: sauceRows
+                        }]
+                    });
+
+                    if (listSuccess) return { text: "" };
+
+                    // Fallback: text list
+                    const sauceList = sauceStep.options.map((o: any) => {
+                        const extra = o.price_extra > 0 ? ` (+$${o.price_extra})` : '';
+                        return `• ${o.name}${extra}`;
+                    }).join('\n');
+
+                    return {
+                        text: `🍔 *${selectedBurger.name}* agregada — $${selectedBurger.base_price}\n\n🫗 *Elige tus salsas* (${included} incluidas, máx ${maxSel}):\n\n${sauceList}\n\n_Escribe las salsas separadas por coma_\n_Ej: Siracha, Ponzu_`
+                    };
+                }
+
+                // No sauce step — just confirm
+                const { updateSession } = await import('./session.ts');
+                session.isProcessing = false;
+                await updateSession(from, session);
+                const cartTotal = session.cart.reduce((s: number, i: any) => s + (i.price * i.quantity), 0);
+                return {
+                    text: `🍔 *${selectedBurger.name}* agregada — $${selectedBurger.base_price}\n\n🛒 Total: $${cartTotal}\n\n¿Algo más?`,
+                    useButtons: true,
+                    buttons: ['Seguir pidiendo', 'Pagar 💳']
+                };
+            }
+
+            // GENERIC burger request — show the burger LIST
+            const burgerDetails = await Promise.all(products.slice(0, 10).map(async (p: any) => {
                 const fullProduct = await prodService.getProductBySlug(p.slug || '');
                 let desc = `$${p.base_price}`;
                 if (fullProduct?.steps?.length) {
@@ -2116,10 +2218,9 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
                 return { id: p.slug || p.id.toString(), title: p.name.substring(0, 24), description: desc.substring(0, 72) };
             }));
 
-            // Send as List Message
             const success = await sendListMessage(from, {
                 header: "🍔 Sushi Burgers",
-                body: "Nuestra fusión japonesa-mexicana 🇯🇵��🇽\nCada burger incluye salsas a elegir.\n¿Cuál quieres probar?",
+                body: "Nuestra fusión japonesa-mexicana 🇯🇵🇲🇽\nCada burger incluye salsas a elegir.\n¿Cuál quieres probar?",
                 footer: "Yoko Poke",
                 buttonText: "Ver burgers",
                 sections: [{
@@ -2128,14 +2229,14 @@ async function handleInstantKeywords(from: string, text: string, session: any): 
                 }]
             });
 
-            if (success) return { text: "" }; // HANDLED
+            if (success) return { text: "" };
 
             // Fallback: rich text
-            const list = products.slice(0, 3).map(p => `🍔 *${p.name}* — $${p.base_price}`).join('\n');
+            const list = products.slice(0, 3).map((p: any) => `🍔 *${p.name}* — $${p.base_price}`).join('\n');
             return {
                 text: `🍔 *Sushi Burgers*\n\n${list}\n\n_Cada burger incluye 2 salsas a elegir_\n\n¿Cuál quieres?`,
                 useButtons: true,
-                buttons: products.slice(0, 3).map(p => p.name)
+                buttons: products.slice(0, 3).map((p: any) => p.name)
             };
         }
     }
