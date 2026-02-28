@@ -716,8 +716,8 @@ export async function processMessage(from: string, text: string): Promise<void> 
     await updateSession(from, session);
 
     // ⏳ SMART DEBOUNCE: Wait for rapid-fire messages to accumulate
-    // Phase 1: Wait 3s to catch quick follow-ups
-    await new Promise(r => setTimeout(r, 3000));
+    // Phase 1: Wait 5s to catch quick follow-ups
+    await new Promise(r => setTimeout(r, 5000));
     // Phase 2: Check if more messages arrived — if so, wait longer
     const midCheck = await getSession(from);
     const midCount = midCheck.pendingMessages?.length || 0;
