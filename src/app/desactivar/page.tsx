@@ -56,7 +56,8 @@ export default function DesactivarPage() {
             if (res.ok) {
                 setIsAuthenticated(true);
             } else {
-                setError('Acceso denegado. Contraseña incorrecta.');
+                const data = await res.json();
+                setError(data.error || 'Acceso denegado.');
             }
         } catch (e) {
             setError('Error de conexión.');
