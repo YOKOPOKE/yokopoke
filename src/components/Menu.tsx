@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, Plus, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { Star, Plus, Check, ChevronLeft, ChevronRight, AlertCircle, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { useToast } from "@/context/ToastContext";
@@ -63,6 +63,7 @@ export default function Menu() {
     const [dbCategories, setDbCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState<string>("");
+    const [webDisabled, setWebDisabled] = useState(false);
 
     // UI State for "Added" feedback per item
     const [justAdded, setJustAdded] = useState<Record<number, boolean>>({});
@@ -71,16 +72,31 @@ export default function Menu() {
     const { addToCart } = useCart();
     const { showToast } = useToast();
 
-
     useEffect(() => {
         const fetchMenu = async () => {
             setLoading(true);
 
+            // Check global config first
+            try {
+                const { data: config } = await supabase
+                    .from('app_config')
+                    .select('value')
+                    .eq('key', 'web_products_enabled')
+                    .single();
+
+                if (config && (config.value === false || config.value === 'false')) {
+                    setWebDisabled(true);
+                    setLoading(false);
+                    return;
+                } else {
+                    setWebDisabled(false);
+                }
+            } catch (e) {
+                console.error("Config check fail:", e);
+                setWebDisabled(false);
+            }
+
             // 1. Fetch Categories
-            // We verify specific categories order or just alpha
-            // Ideally we could have an 'order' column, but alpha or ID is fine for now
-            // 1. Fetch Categories
-            // Show only active categories
             const { data: cats } = await supabase
                 .from('categories')
                 .select('*')
@@ -92,7 +108,6 @@ export default function Menu() {
             const { data: prods } = await supabase
                 .from('products')
                 .select('*, categories(*)')
-                // .eq('is_active', true) // Fetch ALL to show disabled
                 ;
 
             if (prods) setProducts(prods as any);
@@ -102,23 +117,17 @@ export default function Menu() {
 
         fetchMenu();
 
-        // Realtime Subscription for Products and Categories
+        // Realtime Subscription
         const channel = supabase.channel('menu-updates')
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'products' },
-                () => {
-                    console.log('🔄 Product update detected. Refreshing menu...');
-                    fetchMenu();
-                }
+                () => fetchMenu()
             )
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'categories' },
-                () => {
-                    console.log('🔄 Category update detected. Refreshing menu...');
-                    fetchMenu();
-                }
+                () => fetchMenu()
             )
             .subscribe();
 
@@ -129,10 +138,8 @@ export default function Menu() {
 
     // 1. Filter & Group
     const { categoryNames, groupedProducts } = useMemo(() => {
-        // Exclude Custom Builders (Bowls/Burgers) referenced by SLUG or Special Category
-        // We assume 'pokes' and 'burgers' slugs in categories table are the builders
         const relevant = products.filter(p =>
-            p.type === 'other' || p.type === 'burger' // Show standard items and burgers in Menu
+            p.type === 'other' || p.type === 'burger'
         );
 
         const grouped: Record<string, Product[]> = {};
@@ -145,65 +152,47 @@ export default function Menu() {
             activeCatNames.add(catName);
         });
 
-        // Sort categories based on DB order (filtered by what actually has products)
-        // We iterate over dbCategories to preserve their order (e.g. ID or Name)
-        const sortedCats: string[] = [];
-        dbCategories.forEach(c => {
-            if (activeCatNames.has(c.name)) {
-                // Prevent duplicates if multiple categories have same name
-                if (!sortedCats.includes(c.name)) {
-                    sortedCats.push(c.name);
-                }
-            }
-        });
+        const sortedNames = dbCategories
+            .filter(c => activeCatNames.has(c.name))
+            .map(c => c.name);
 
-        // Add any found names that weren't in dbCategories (fallback)
-        activeCatNames.forEach(name => {
-            if (!sortedCats.includes(name)) sortedCats.push(name);
-        });
-
-        // Put 'Varios' or fallback at end if needed
-        const variesIdx = sortedCats.indexOf('Varios');
-        if (variesIdx !== -1) {
-            sortedCats.splice(variesIdx, 1);
-            sortedCats.push('Varios');
+        if (activeCatNames.has('Varios') && !sortedNames.includes('Varios')) {
+            sortedNames.push('Varios');
         }
 
-        return { categoryNames: sortedCats, groupedProducts: grouped };
-    }, [products, dbCategories]);
-
-    // Set initial active category
-    useEffect(() => {
-        if ((!activeCategory || !categoryNames.includes(activeCategory)) && categoryNames.length > 0) {
-            setActiveCategory(categoryNames[0]);
+        if (sortedNames.length > 0 && !activeCategory) {
+            setActiveCategory(sortedNames[0]);
         }
-    }, [categoryNames, activeCategory]);
 
+        return { categoryNames: sortedNames, groupedProducts: grouped };
+    }, [products, dbCategories, activeCategory]);
 
     const handleAdd = (product: Product) => {
         if (!product.is_active) {
-            showToast('🚫 Producto no disponible por el momento.', 'error');
+            showToast("Platillo agotado temporalmente.");
             return;
         }
-        const price = Number(product.base_price || 0);
 
         addToCart({
-            name: product.name,
             productType: 'menu',
-            price: price, // Use 'price' matching OrderItem type
+            name: product.name,
+            price: product.base_price,
             quantity: 1,
-            details: [], // Explicitly empty for menu items
             image: product.image_url,
-            // Add breakdown even for simple items for consistency
             priceBreakdown: {
-                base: price,
+                base: product.base_price,
                 extras: 0
             }
-        }, true); // Open drawer
+        });
 
-        // Visual Feedback
         setJustAdded(prev => ({ ...prev, [product.id]: true }));
-        setTimeout(() => setJustAdded(prev => ({ ...prev, [product.id]: false })), 1500);
+        setTimeout(() => {
+            setJustAdded(prev => {
+                const newState = { ...prev };
+                delete newState[product.id];
+                return newState;
+            });
+        }, 2000);
 
         confetti({
             particleCount: 30,
@@ -225,17 +214,40 @@ export default function Menu() {
         );
     }
 
-    // If no Menu Items exist
+    if (webDisabled) {
+        return (
+            <section id="menu" className="py-24 bg-slate-50/30 relative z-10 overflow-hidden flex items-center justify-center min-h-[60vh]">
+                <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-100/40 via-transparent to-transparent pointer-events-none" />
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="max-w-2xl mx-auto px-6 text-center relative z-10"
+                >
+                    <div className="w-20 h-20 bg-violet-100 rounded-3xl flex items-center justify-center mx-auto mb-8 text-violet-600 shadow-xl shadow-violet-500/10">
+                        <Clock size={40} className="animate-pulse" />
+                    </div>
+                    <h2 className="text-4xl font-serif font-black text-slate-900 mb-6">Estamos Actualizando el Menú</h2>
+                    <p className="text-slate-600 text-lg leading-relaxed mb-8">
+                        Nuestro catálogo digital se encuentra en mantenimiento temporal para ofrecerte una mejor experiencia.
+                        ¡No te preocupes! El resto de la web sigue activa.
+                    </p>
+                    <div className="inline-flex items-center gap-2 px-6 py-3 bg-violet-50 border border-violet-100 text-violet-700 font-bold rounded-2xl">
+                        <AlertCircle size={18} />
+                        Vuelve a visitarnos en unos momentos
+                    </div>
+                </motion.div>
+            </section>
+        );
+    }
+
     if (categoryNames.length === 0) return null;
 
     return (
         <section id="menu" className="py-24 bg-slate-50/30 relative z-10 overflow-hidden">
-            {/* Decorative Background */}
             <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-100/40 via-transparent to-transparent pointer-events-none" />
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
 
-                {/* Header */}
                 <div className="flex flex-col items-center text-center mb-12">
                     <span className="text-xs font-bold tracking-[0.2em] text-violet-500 uppercase mb-3 bg-violet-50 px-4 py-1.5 rounded-full border border-violet-100">
                         Nuestra Carta
@@ -245,102 +257,62 @@ export default function Menu() {
                     </h2>
                 </div>
 
-                {/* Categories Nav (Desktop) */}
                 <div className="hidden md:flex justify-center mb-12 overflow-x-auto pb-4 scrollbar-hide">
-                    <div className="bg-white/70 backdrop-blur-md p-1.5 rounded-full border border-slate-200/60 shadow-lg shadow-slate-200/50 flex gap-2">
-                        {categoryNames.map((cat) => (
+                    <div className="flex gap-2 p-1.5 bg-white shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-100">
+                        {categoryNames.map(cat => (
                             <button
                                 key={cat}
                                 onClick={() => setActiveCategory(cat)}
                                 className={`
-                                    px-6 py-2.5 rounded-full text-sm font-bold transition-all relative whitespace-nowrap
-                                    ${activeCategory === cat ? 'text-white' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}
+                                    px-6 py-2.5 rounded-xl font-bold text-sm transition-all relative
+                                    ${activeCategory === cat
+                                        ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20'
+                                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}
                                 `}
                             >
+                                {cat}
                                 {activeCategory === cat && (
-                                    <motion.div
-                                        layoutId="activeCategory"
-                                        className="absolute inset-0 bg-slate-900 rounded-full shadow-lg"
-                                        initial={false}
-                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                    />
+                                    <motion.div layoutId="active-cat-bg" className="absolute inset-0 bg-slate-900 rounded-xl -z-10" />
                                 )}
-                                <span className="relative z-10">{cat}</span>
                             </button>
                         ))}
                     </div>
                 </div>
 
-                {/* Categories Nav (Mobile Carousel) */}
-                <div className="md:hidden w-full px-4 mb-8">
-                    <div className="flex items-center justify-between gap-4 bg-white/80 backdrop-blur-xl p-2 rounded-2xl shadow-lg shadow-violet-100/50 border border-white">
+                <div className="md:hidden flex overflow-x-auto gap-3 py-4 mb-8 scrollbar-hide -mx-4 px-4">
+                    {categoryNames.map(cat => (
                         <button
-                            onClick={() => {
-                                const idx = categoryNames.indexOf(activeCategory);
-                                const prev = idx === 0 ? categoryNames.length - 1 : idx - 1;
-                                setActiveCategory(categoryNames[prev]);
-                            }}
-                            className="p-3 bg-white rounded-xl shadow-sm hover:translate-x-[-2px] active:scale-95 transition-all text-violet-600"
+                            key={cat}
+                            onClick={() => setActiveCategory(cat)}
+                            className={`
+                                whitespace-nowrap px-6 py-2.5 rounded-xl font-bold text-xs transition-all border
+                                ${activeCategory === cat
+                                    ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/20'
+                                    : 'bg-white text-slate-600 border-slate-100'}
+                            `}
                         >
-                            <ChevronLeft size={24} />
+                            {cat}
                         </button>
-
-                        <div className="flex-1 flex flex-col items-center justify-center overflow-hidden">
-                            <span className="text-[10px] font-bold text-violet-400 tracking-[0.2em] uppercase mb-1">
-                                Categoría {categoryNames.indexOf(activeCategory) + 1}/{categoryNames.length}
-                            </span>
-                            <AnimatePresence mode="wait">
-                                <motion.span
-                                    key={activeCategory}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -10 }}
-                                    transition={{ duration: 0.2 }}
-                                    className="font-serif font-bold text-lg text-slate-800 text-center leading-none"
-                                >
-                                    {activeCategory}
-                                </motion.span>
-                            </AnimatePresence>
-                        </div>
-
-                        <button
-                            onClick={() => {
-                                const idx = categoryNames.indexOf(activeCategory);
-                                const next = idx === categoryNames.length - 1 ? 0 : idx + 1;
-                                setActiveCategory(categoryNames[next]);
-                            }}
-                            className="p-3 bg-white rounded-xl shadow-sm hover:translate-x-[2px] active:scale-95 transition-all text-violet-600"
-                        >
-                            <ChevronRight size={24} />
-                        </button>
-                    </div>
+                    ))}
                 </div>
 
-                {/* Grid */}
                 <motion.div
-                    key="products-grid"
+                    key={activeCategory}
                     variants={containerVariants}
                     initial="hidden"
-                    whileInView="show"
-                    viewport={{ once: true, margin: "-100px" }}
-                    className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-8"
+                    animate="show"
+                    className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6"
                 >
                     <AnimatePresence mode="popLayout">
-                        {(groupedProducts[activeCategory] || []).map((product) => (
+                        {groupedProducts[activeCategory]?.map((product) => (
                             <motion.div
-                                layout
                                 key={product.id}
+                                layout
                                 variants={itemVariants}
-                                initial="hidden"
-                                animate="show"
-                                exit="hidden"
-                                className={`
-                                    rounded-xl p-3 shadow-sm transition-all duration-300 border border-slate-100 group flex flex-col will-change-transform transform-gpu
-                                    ${!product.is_active ? 'opacity-60 grayscale bg-slate-50 cursor-pointer' : 'bg-white hover:shadow-xl'}
-                                `}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                className="group bg-white rounded-3xl p-3 border border-slate-100 hover:border-violet-200 hover:shadow-2xl hover:shadow-violet-500/10 transition-all duration-300 flex flex-col h-full"
                             >
-                                {/* Card Content */}
-                                <div className="relative aspect-square mb-3 overflow-hidden rounded-lg bg-slate-100">
+                                <div className="relative aspect-square rounded-2xl overflow-hidden mb-3 bg-slate-50">
                                     {product.image_url ? (
                                         <div className="relative w-full h-full">
                                             <Image
@@ -351,7 +323,6 @@ export default function Menu() {
                                                 className="object-cover group-hover:scale-110 transition-transform duration-500 transform-gpu"
                                                 priority={false}
                                             />
-                                            {/* Gradient overlay */}
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                         </div>
                                     ) : (
@@ -362,7 +333,6 @@ export default function Menu() {
                                 </div>
 
                                 <div className="flex-1 flex flex-col">
-                                    {/* Header: Name & Price */}
                                     <div className="flex justify-between items-start mb-1 gap-2">
                                         <h3 className="font-serif font-bold text-sm text-slate-900 leading-tight group-hover:text-violet-600 transition-colors line-clamp-2 min-h-[2.5em]">
                                             {product.name}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase";
-import { ShoppingBag, Plus, ChefHat } from "lucide-react";
+import { ShoppingBag, Plus, ChefHat, Clock, AlertCircle } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useToast } from "@/context/ToastContext";
 import confetti from "canvas-confetti";
@@ -23,7 +23,7 @@ type Product = {
     category: string;
     slug: string;
     image_url: string;
-    is_active: boolean; // Add is_active type
+    is_active: boolean;
 };
 
 // Order for fixed menu
@@ -63,13 +63,37 @@ const itemVariants = {
 export default function ProductSelector({ onSelect }: ProductSelectorProps) {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const [webDisabled, setWebDisabled] = useState(false);
+
     const supabase = createClient();
     const { addToCart } = useCart();
     const { showToast } = useToast();
 
     useEffect(() => {
         const fetchMenu = async () => {
-            const { data } = await supabase.from('products').select('*'); // Fetch ALL to show disabled
+            setLoading(true);
+
+            // Check global config first
+            try {
+                const { data: config } = await supabase
+                    .from('app_config')
+                    .select('value')
+                    .eq('key', 'web_products_enabled')
+                    .single();
+
+                if (config && (config.value === false || config.value === 'false')) {
+                    setWebDisabled(true);
+                    setLoading(false);
+                    return;
+                } else {
+                    setWebDisabled(false);
+                }
+            } catch (e) {
+                console.error("Config check failed:", e);
+                setWebDisabled(false);
+            }
+
+            const { data } = await supabase.from('products').select('*');
             if (data) setProducts(data);
             setLoading(false);
         };
@@ -81,10 +105,7 @@ export default function ProductSelector({ onSelect }: ProductSelectorProps) {
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'products' },
-                () => {
-                    console.log('🔄 Update received, refreshing menu...');
-                    fetchMenu();
-                }
+                () => fetchMenu()
             )
             .subscribe();
 
@@ -95,23 +116,6 @@ export default function ProductSelector({ onSelect }: ProductSelectorProps) {
 
     // 1. Extract Heroes (Custom Builders)
     const customBowls = products.filter(p => p.category === 'bowls' || p.type === 'poke');
-    const customBurgers = products.filter(p => p.category === 'burgers' || p.type === 'burger');
-
-    // 2. Extract Fixed Menu & Group (Unused logic kept for safety or future use)
-    const fixedMenuData = products.filter(p => p.category !== 'bowls' && p.category !== 'burgers' && p.type === 'other');
-
-    const groupedFixedMenu = fixedMenuData.reduce((acc, product) => {
-        const cat = product.category || 'General';
-        if (!acc[cat]) acc[cat] = [];
-        acc[cat].push(product);
-        return acc;
-    }, {} as Record<string, Product[]>);
-
-    const sortedMenuCategories = Object.keys(groupedFixedMenu).sort((a, b) => {
-        const indexA = MENY_CATEGORY_ORDER.indexOf(a);
-        const indexB = MENY_CATEGORY_ORDER.indexOf(b);
-        return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
-    });
 
     const handleBuilderSelect = (product: Product) => {
         if (!product.is_active) {
@@ -121,35 +125,31 @@ export default function ProductSelector({ onSelect }: ProductSelectorProps) {
         if (onSelect) onSelect(product.slug);
     };
 
-    const handleQuickAdd = (product: Product) => {
-        if (!product.is_active) {
-            showToast('🚫 Producto no disponible por el momento.', 'error');
-            return;
-        }
-        const price = Number(product.base_price || 0);
-
-        addToCart({
-            name: product.name,
-            productType: 'menu',
-            price: price,
-            quantity: 1,
-            details: [],
-            image: product.image_url,
-            priceBreakdown: {
-                base: price,
-                extras: 0
-            }
-        });
-
-        confetti({
-            particleCount: 50,
-            spread: 60,
-            origin: { y: 0.8 },
-            colors: ['#a78bfa', '#34d399']
-        });
-    };
-
     if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-300 animate-pulse">Cargando menú delicioso...</div>;
+
+    if (webDisabled) {
+        return (
+            <section id="product-selector" className="min-h-[40vh] bg-white flex items-center justify-center p-8">
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-center max-w-lg"
+                >
+                    <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-slate-400">
+                        <Clock size={32} />
+                    </div>
+                    <h2 className="text-3xl font-serif font-black text-slate-900 mb-4">Experiencia en Pausa</h2>
+                    <p className="text-slate-500 font-medium mb-6">
+                        Estamos preparando nuevas sorpresas para nuestros armadores.
+                        Vuelve pronto para crear tu combinación perfecta.
+                    </p>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-full inline-block">
+                        Mantenimiento del Catálogo
+                    </div>
+                </motion.div>
+            </section>
+        );
+    }
 
     return (
         <section id="product-selector" className="min-h-screen bg-gradient-to-b from-yoko-light via-white to-yoko-light relative overflow-hidden pb-40">
@@ -180,8 +180,8 @@ export default function ProductSelector({ onSelect }: ProductSelectorProps) {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
                         {customBowls.map((product) => {
-                            const emoji = '🥗';
-                            const actionText = 'Armar Bowl';
+                            const emoji = product.type === 'burger' ? '🍔' : '🥗';
+                            const actionText = product.type === 'burger' ? 'Armar Burger' : 'Armar Bowl';
 
                             return (
                                 <motion.div key={product.id} variants={itemVariants}>
@@ -220,23 +220,13 @@ export default function ProductSelector({ onSelect }: ProductSelectorProps) {
                         })}
                     </div>
 
-                    {/* Fallback if no builders found */}
                     {customBowls.length === 0 && !loading && (
                         <div className="text-center text-slate-400 py-12">
                             <p>No hay pokes personalizables disponibles en este momento.</p>
                         </div>
                     )}
-
-                    {/* Extra message for sizes if needed */}
-                    <div className="mt-8 flex justify-center gap-4 text-sm font-bold text-slate-400 uppercase tracking-widest opacity-60 flex-wrap">
-                        {customBowls.map(p => (
-                            <span key={p.id}>• {p.name} ${p.base_price}</span>
-                        ))}
-                    </div>
                 </motion.div>
             </div>
-
-            {/* --- FIXED MENU SECTION REMOVED --- */}
         </section>
     );
 }

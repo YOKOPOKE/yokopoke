@@ -56,39 +56,46 @@ export async function POST(request: Request) {
 
     // Process Action
     try {
-        if (action === 'enable') {
-            const { error: err1 } = await supabase
-                .from('app_config')
-                .upsert({ key: 'maintenance_mode', value: true }, { onConflict: 'key' });
+        if (action === 'enable' || action === 'disable') {
+            const isEnable = action === 'enable';
+            const { target } = body; // 'bot' or 'web'
 
-            const { error: err2 } = await supabase
-                .from('app_config')
-                .upsert({ key: 'maintenance_message', value: message || "Servicio suspendido temporalmente." }, { onConflict: 'key' });
+            if (target === 'web') {
+                const { error } = await supabase
+                    .from('app_config')
+                    .upsert({ key: 'web_products_enabled', value: !isEnable }, { onConflict: 'key' });
+                if (error) throw error;
+                return NextResponse.json({ success: true, status: isEnable ? 'disabled' : 'enabled' });
+            } else {
+                // Default to bot
+                const { error: err1 } = await supabase
+                    .from('app_config')
+                    .upsert({ key: 'maintenance_mode', value: isEnable }, { onConflict: 'key' });
 
-            if (err1 || err2) throw new Error("Error updating config");
+                if (isEnable) {
+                    await supabase
+                        .from('app_config')
+                        .upsert({ key: 'maintenance_message', value: message || "Servicio suspendido temporalmente." }, { onConflict: 'key' });
+                }
 
-            return NextResponse.json({ success: true, status: 'enabled' });
-        } else if (action === 'disable') {
-            const { error } = await supabase
-                .from('app_config')
-                .upsert({ key: 'maintenance_mode', value: false }, { onConflict: 'key' });
-
-            if (error) throw error;
-
-            return NextResponse.json({ success: true, status: 'disabled' });
+                if (err1) throw new Error("Error updating config");
+                return NextResponse.json({ success: true, status: isEnable ? 'enabled' : 'disabled' });
+            }
         } else if (action === 'status') {
             const { data } = await supabase
                 .from('app_config')
                 .select('key, value')
-                .in('key', ['maintenance_mode', 'maintenance_message']);
+                .in('key', ['maintenance_mode', 'maintenance_message', 'web_products_enabled']);
 
             const mode = data?.find(d => d.key === 'maintenance_mode')?.value;
             const msg = data?.find(d => d.key === 'maintenance_message')?.value;
+            const webEnabled = data?.find(d => d.key === 'web_products_enabled')?.value;
 
             return NextResponse.json({
                 success: true,
                 isActive: mode === true || mode === 'true',
-                message: msg
+                message: msg,
+                webProductsEnabled: webEnabled !== false && webEnabled !== 'false' // Default to true
             });
         }
 
