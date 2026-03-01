@@ -84,7 +84,7 @@ export default function Hero() {
                             <Edit className="w-5 h-5" /> Armar mi Bowl
                         </motion.a>
                         <motion.a
-                            href="https://wa.me/5219631371902"
+                            href="https://wa.me/5219631367971"
                             target="_blank"
                             whileHover={{ scale: 1.05, y: -2 }}
                             whileTap={{ scale: 0.95 }}
