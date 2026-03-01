@@ -27,6 +27,11 @@ export async function isMaintenanceMode(): Promise<boolean> {
     return val === true || val === 'true';
 }
 
+export async function getMaintenanceMessage(): Promise<string> {
+    const val = await getAppConfig('maintenance_message');
+    return val || "Servicio suspendido temporalmente por mantenimiento. Disculpe las molestias.";
+}
+
 export async function getBusinessHours() {
     const defaultHours = { open: 14, close: 22 };
     const val = await getAppConfig('business_hours');

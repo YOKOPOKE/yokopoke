@@ -3011,10 +3011,11 @@ Deno.serve(async (req: Request) => {
             try {
                 // --- 1. KILL SWITCH (Feature Flag) ---
                 try {
-                    const { isMaintenanceMode } = await import('./configService.ts');
+                    const { isMaintenanceMode, getMaintenanceMessage } = await import('./configService.ts');
                     if (await isMaintenanceMode()) {
                         console.warn("🛑 Maintenance Mode Active. Stopping.");
-                        await sendWhatsApp(from, { text: "🔧 Estamos en mantenimiento para mejorar tu experiencia. Volvemos en unos minutos. 👷‍♂️" });
+                        const msg = await getMaintenanceMessage();
+                        await sendWhatsApp(from, { text: msg });
                         return;
                     }
                 } catch (e) {
