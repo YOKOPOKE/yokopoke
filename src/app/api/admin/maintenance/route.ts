@@ -28,12 +28,13 @@ function isRateLimited(ip: string): boolean {
 export async function POST(request: Request) {
     // Require ADMIN_SECRET to be configured — no fallback
     if (!ADMIN_SECRET) {
-        console.error("CRITICAL: ADMIN_SECRET not configured in environment variables.");
-        return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+        console.error("CRITICAL: ADMIN_SECRET not configured.");
+        return NextResponse.json({ error: "Falta configurar ADMIN_SECRET en Vercel" }, { status: 500 });
     }
 
     if (!SUPABASE_SERVICE_ROLE_KEY) {
-        return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+        console.error("CRITICAL: SUPABASE_SERVICE_ROLE_KEY not configured.");
+        return NextResponse.json({ error: "Falta configurar SUPABASE_SERVICE_ROLE_KEY en Vercel" }, { status: 500 });
     }
 
     // Rate limiting by IP
